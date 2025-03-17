@@ -1,14 +1,19 @@
 import { Markup, Telegraf } from "telegraf";
 import {
     addToQueue,
+    devices,
     getPlaybackState,
     getTrackDetails,
+    next,
     pause,
     play,
+    previous,
+    queue,
     refreshToken,
     search,
+    start,
 } from "./spotify/lib";
-import { catchError, firstValueFrom, from, map, switchMap, tap } from "rxjs";
+import { catchError, from, map, of, switchMap, tap } from "rxjs";
 import { ENV } from "./config/env";
 import express from "express";
 import querystring from "querystring";
@@ -17,7 +22,6 @@ import { PrismaClient } from "@prisma/client";
 import axios from "axios";
 import { CronJob } from "cron";
 import { InlineQueryResult } from "telegraf/typings/core/types/typegram";
-import { Item } from "./types/spotify/search";
 
 const scope =
     "user-read-private user-read-email user-read-playback-state user-modify-playback-state user-read-currently-playing";
@@ -64,36 +68,35 @@ async function main() {
                     })
             );
         } else {
-            await firstValueFrom(
-                from(
-                    axios.post<{
-                        access_token: string;
-                        token_type: "Bearer";
-                        expires_in: number;
-                        refresh_token: string;
-                        scope: string;
-                    }>(
-                        "https://accounts.spotify.com/api/token",
-                        {
-                            code: req.query.code,
-                            redirect_uri: "http://127.0.0.1:3000/callback",
-                            grant_type: "authorization_code",
+            from(
+                axios.post<{
+                    access_token: string;
+                    token_type: "Bearer";
+                    expires_in: number;
+                    refresh_token: string;
+                    scope: string;
+                }>(
+                    "https://accounts.spotify.com/api/token",
+                    {
+                        code: req.query.code,
+                        redirect_uri: "http://127.0.0.1:3000/callback",
+                        grant_type: "authorization_code",
+                    },
+                    {
+                        headers: {
+                            "content-type": "application/x-www-form-urlencoded",
+                            Authorization:
+                                "Basic " +
+                                Buffer.from(
+                                    ENV.SPOTIFY_CLIENT_ID +
+                                        ":" +
+                                        ENV.SPOTIFY_CLIENT_SECRET
+                                ).toString("base64"),
                         },
-                        {
-                            headers: {
-                                "content-type":
-                                    "application/x-www-form-urlencoded",
-                                Authorization:
-                                    "Basic " +
-                                    Buffer.from(
-                                        ENV.SPOTIFY_CLIENT_ID +
-                                            ":" +
-                                            ENV.SPOTIFY_CLIENT_SECRET
-                                    ).toString("base64"),
-                            },
-                        }
-                    )
-                ).pipe(
+                    }
+                )
+            )
+                .pipe(
                     switchMap(async (r) => {
                         console.log("[OK] login success");
                         console.log(r.data);
@@ -110,22 +113,25 @@ async function main() {
                     }),
                     catchError((e) => {
                         console.log("[ERROR] login failed");
-                        console.log(e.response.data);
+                        console.log(e?.response?.data);
                         throw e;
                     })
                 )
-            );
-
-            res.send("Success! You can now close the window.");
+                .subscribe({
+                    next: () => {
+                        res.send("Success! You can now close the window.");
+                    },
+                    error: (e) => {
+                        res.send("Error occurred during authentication.");
+                    },
+                });
         }
     });
 
     bot.on("inline_query", async (ctx) => {
         const uniqueId = Date.now().toString(); // Generate a short unique ID
-        await firstValueFrom(
-            search(
-                ctx.inlineQuery.query.trim().replace(/[^a-zA-Z0-9]/g, "")
-            ).pipe(
+        search(ctx.inlineQuery.query.trim().replace(/[^a-zA-Z0-9]/g, ""))
+            .pipe(
                 map((r) => {
                     return r.tracks?.items.map((v) => {
                         return {
@@ -169,24 +175,105 @@ async function main() {
                 catchError((e) => {
                     console.log("[ERROR] search");
                     console.log(e);
-                    throw e;
+                    ctx.reply(e.message);
+                    return of();
                 })
             )
-        );
+            .subscribe();
     });
 
     bot.start((ctx) => {
-        ctx.reply("Hello World");
+        start().subscribe({
+            next: (r) => {
+                console.log("[OK] start");
+                console.log(r);
+                ctx.reply("Started");
+            },
+            error: (e) => {
+                console.log("[ERROR] start");
+                console.log(e);
+                ctx.reply(e.message);
+            },
+        });
     });
 
     bot.command("pause", async (ctx) => {
-        return firstValueFrom(
-            pause().pipe(
+        pause()
+            .pipe(
                 tap((p) => {
-                    ctx.reply(`${p.item.name} by ${p.item.artists[0].name} Paused`);
+                    ctx.reply(
+                        `${p.item.name} by ${p.item.artists[0].name} Paused`
+                    );
+                }),
+                catchError((e: Error) => {
+                    console.log("[ERROR] start");
+                    ctx.reply(e.message);
+                    return of();
                 })
             )
-        );
+            .subscribe();
+    });
+
+    bot.command("next", async (ctx) => {
+        next()
+            .pipe(
+                tap((p) => {
+                    ctx.reply(`Next Track`);
+                }),
+                catchError((e: Error) => {
+                    ctx.reply(e.message);
+                    return of();
+                })
+            )
+            .subscribe();
+    });
+
+    bot.command("previous", async (ctx) => {
+        previous()
+            .pipe(
+                tap((p) => {
+                    ctx.reply(`Previous Track`);
+                }),
+                catchError((e: Error) => {
+                    ctx.reply(e.message);
+                    return of();
+                })
+            )
+            .subscribe();
+    });
+
+    bot.command("devices", async (ctx) => {
+        devices()
+            .pipe(
+                tap((p) => {
+                    ctx.reply(
+                        `Devices: ${p.map((d: any) => d.name).join(", ")}`
+                    );
+                }),
+                catchError((e: Error) => {
+                    ctx.reply(e.message);
+                    return of();
+                })
+            )
+            .subscribe();
+    });
+
+    bot.command("queue", async (ctx) => {
+        queue()
+            .pipe(
+                tap((p) => {
+                    ctx.reply(
+                        `Queue: \n${p.queue
+                            .map((d, i) => `${i + 1} ${d.name}`)
+                            .join("\n")}`
+                    );
+                }),
+                catchError((e: Error) => {
+                    ctx.reply(e.message);
+                    return of();
+                })
+            )
+            .subscribe();
     });
 
     bot.action(/queue:(.*)/, async (ctx) => {
@@ -194,12 +281,12 @@ async function main() {
 
         console.log(id);
 
-        return firstValueFrom(
-            getTrackDetails(id).pipe(
+        getTrackDetails(id)
+            .pipe(
                 switchMap(async (t) => {
                     console.log(t);
-                    return firstValueFrom(
-                        addToQueue(t.uri).pipe(
+                    addToQueue(t.uri)
+                        .pipe(
                             switchMap(async () => {
                                 await ctx.answerCbQuery();
                                 await ctx.editMessageReplyMarkup({
@@ -212,25 +299,31 @@ async function main() {
                                 );
                             })
                         )
-                    );
+                        .subscribe();
                 })
             )
-        );
+            .subscribe();
     });
 
     bot.command("play", async (ctx) => {
-        return firstValueFrom(
-            play().pipe(
+        play()
+            .pipe(
                 tap((p) => {
-                    ctx.reply(`${p.item.name} by ${p.item.artists[0].name} Playing`);
+                    ctx.reply(
+                        `${p.item.name} by ${p.item.artists[0].name} Playing`
+                    );
+                }),
+                catchError((e: Error) => {
+                    ctx.reply(e.message);
+                    return of();
                 })
             )
-        );
+            .subscribe();
     });
 
     bot.command("current", (ctx) => {
-        return firstValueFrom(
-            getPlaybackState().pipe(
+        getPlaybackState()
+            .pipe(
                 tap((p) => {
                     console.log(p);
                     const progressMinutes = Math.floor(
@@ -261,9 +354,13 @@ async function main() {
                             parse_mode: "HTML",
                         }
                     );
+                }),
+                catchError((e: Error) => {
+                    ctx.reply(e.message);
+                    return of();
                 })
             )
-        );
+            .subscribe();
     });
 
     process.once("SIGINT", () => {
@@ -278,11 +375,7 @@ async function main() {
     cron.start();
     app.listen(3000);
 
-    from(bot.launch()).subscribe({
-        error: (e) => {
-            console.log(e);
-        },
-    });
+    bot.launch();
 
     return bot;
 }

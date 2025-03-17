@@ -14,6 +14,7 @@ import axios from "axios";
 import { PrismaClient } from "@prisma/client";
 import { Devices } from "../types/spotify/device";
 import { Search } from "../types/spotify/search";
+import { QueueResponse } from "../types/spotify/queue";
 
 const http = axios.create({
     timeout: 9999999,
@@ -30,14 +31,42 @@ http.interceptors.response.use(
     (error) => {
         console.log("[ERROR] request error");
         console.log(error);
-        if (error.response.status === 401) {
-        }
+
         throw error;
     }
 );
 
+export function start() {
+    return getAccessToken().pipe(
+        switchMap((token) =>
+            http.get<Devices>("https://api.spotify.com/v1/me/player/devices", {
+                method: "GET",
+            })
+        ),
+        switchMap((v) => {
+            const device = v.data.devices[0];
+            return http.put<PlaybackState>(
+                "https://api.spotify.com/v1/me/player",
+                {
+                    device_ids: [device.id],
+                    play: true,
+                },
+                {
+                    method: "PUT",
+                }
+            );
+        }),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
+    );
+}
+
 export function refreshToken() {
     const creds = prisma.user.findFirst({});
+    if (!creds) return from(of());
     let id: string = "";
     return from(creds).pipe(
         switchMap((v) => {
@@ -94,7 +123,12 @@ export function getDevices() {
                 method: "GET",
             })
         ),
-        map((r) => r.data)
+        map((r) => r.data),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
     );
 }
 
@@ -146,7 +180,17 @@ export function play() {
                 method: "PUT",
             })
         ),
-        switchMap(() => getPlaybackState())
+        switchMap(() => getPlaybackState()),
+        catchError((e) => {
+            console.log("[ERROR] login failed");
+            console.log(e?.response?.data);
+            throw e;
+        }),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
     );
 }
 
@@ -163,6 +207,11 @@ export function pause() {
                 }
             );
             return pb;
+        }),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
         })
     );
 }
@@ -176,8 +225,100 @@ export function next() {
                     Authorization: `Bearer ${token?.token}`,
                 },
             })
-        )
+        ),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
     );
+}
+
+export function previous() {
+    return getAccessToken().pipe(
+        switchMap((token) =>
+            http.post("https://api.spotify.com/v1/me/player/previous", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token?.token}`,
+                },
+            })
+        ),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
+    );
+}
+
+export function volumeDown() {
+    return getAccessToken().pipe(
+        switchMap((token) =>
+            http.put("https://api.spotify.com/v1/me/player/volume", {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${token?.token}`,
+                },
+                data: {
+                    volume_percent: 50,
+                },
+            })
+        ),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
+    );
+}
+
+export function volumeUp() {
+    return getAccessToken().pipe(
+        switchMap((token) =>
+            http.put("https://api.spotify.com/v1/me/player/volume", {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${token?.token}`,
+                },
+                data: {
+                    volume_percent: 100,
+                },
+            })
+        ),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
+    );
+}
+
+export function devices() {
+    return getAccessToken()
+        .pipe(
+            switchMap((token) =>
+                http.get("https://api.spotify.com/v1/me/player/devices", {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token?.token}`,
+                    },
+                })
+            )
+        )
+        .pipe(
+            map((r) => {
+                return r.data.devices.map((d: any) => ({
+                    id: d.id,
+                    name: d.name,
+                }));
+            }),
+            catchError((e) => {
+                console.log("[ERROR] start");
+                console.log(e?.response?.data);
+                throw new Error(e?.response?.data?.error?.message);
+            })
+        );
 }
 
 export function search(query: string) {
@@ -189,7 +330,14 @@ export function search(query: string) {
                 method: "GET",
             }
         )
-    ).pipe(map((r) => r.data));
+    ).pipe(
+        map((r) => r.data),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
+    );
 }
 
 export function addToQueue(uri: string) {
@@ -202,7 +350,7 @@ export function addToQueue(uri: string) {
     ).pipe(
         catchError((e) => {
             console.log("[ERROR] addToQueue");
-            console.log(e.response.data);
+            console.log(e?.response?.data);
             throw e;
         })
     );
@@ -213,5 +361,34 @@ export function getTrackDetails(id: string) {
         http.get(`https://api.spotify.com/v1/tracks/${id}`, {
             method: "GET",
         })
-    ).pipe(map((r) => r.data));
+    ).pipe(
+        map((r) => r.data),
+        catchError((e) => {
+            console.log("[ERROR] start");
+            console.log(e?.response?.data);
+            throw new Error(e?.response?.data?.error?.message);
+        })
+    );
+}
+
+export function queue() {
+    return getAccessToken().pipe(
+        switchMap((token) =>
+            http.get<QueueResponse>(
+                "https://api.spotify.com/v1/me/player/queue",
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token?.token}`,
+                    },
+                }
+            )
+        ),
+        map((r) => r.data),
+        catchError((e) => {
+            console.log("[ERROR] queue");
+            console.log(e?.response?.data);
+            throw e;
+        })
+    );
 }

@@ -207,7 +207,7 @@ async function main() {
                 }),
                 catchError((e: Error) => {
                     console.log("[ERROR] start");
-                    ctx.reply(e.message);
+                    ctx.reply(e.message || "Failed to pause");
                     return of();
                 })
             )

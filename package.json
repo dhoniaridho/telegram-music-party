@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/main.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "make:migration": "npx prisma migrate dev",
+    "start": "node dist/main.js"
   },
   "keywords": [],
   "author": "",

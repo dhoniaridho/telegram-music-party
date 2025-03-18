@@ -18,4 +18,9 @@ FROM node:23-alpine AS runtime
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-CMD ["node", "dist/main.js"]
+COPY docker ./docker
+COPY prisma ./prisma
+
+RUN chmod +x ./docker/run.sh
+
+ENTRYPOINT ["./docker/run.sh"]

@@ -20,6 +20,9 @@ const http = axios.create({
     timeout: 9999999,
 });
 
+export const scope =
+    "user-read-private user-read-email user-read-playback-state user-modify-playback-state user-read-currently-playing";
+
 http.interceptors.request.use(async (config) => {
     const token = await firstValueFrom(getAccessToken());
     config.headers.Authorization = `Bearer ${token?.token}`;

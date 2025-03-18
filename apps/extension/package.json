@@ -10,11 +10,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@heroui/react": "2.7.5",
+    "@tailwindcss/postcss": "^4.0.14",
+    "@tailwindcss/vite": "^4.0.14",
+    "autoprefixer": "^10.4.21",
+    "framer-motion": "^12.5.0",
+    "postcss": "^8.5.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "rxjs": "^7.8.2",
+    "socket.io-client": "^4.8.1",
+    "tailwindcss": "^3.4.17",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@types/chrome": "^0.0.309",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react-swc": "^3.8.0",

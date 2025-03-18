@@ -1,35 +1,105 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from "react";
+import {
+    muteCommand,
+    nextCommand,
+    pauseCommand,
+    playCommand,
+    prevCommand,
+    volumeDownCommand,
+    volumeUpCommand,
+} from "./lib/chrome";
+import { addToast, Button, Input } from "@heroui/react";
+import { firstValueFrom, from, map, switchMap } from "rxjs";
 
 function App() {
-  const [count, setCount] = useState(0)
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        await chrome.storage.local.set({ partyUrl: data.get("partyUrl") });
+        addToast({
+            title: "Updated Party Config",
+        });
+        chrome.tabs.query({}, (tabs) => {
+            tabs.forEach((t) => chrome.tabs.reload(t.id as number));
+        });
+    };
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    const [partyUrl, setPartyUrl] = useState("");
+
+    useEffect(() => {
+        firstValueFrom(
+            from(chrome.storage.local.get("partyUrl")).pipe(
+                map((v) => v.partyUrl as string),
+                switchMap(async (v) => {
+                    if (!v) {
+                        const defaultValue = "https://party.dhoniaridho.com";
+                        return defaultValue;
+                    }
+                    setPartyUrl(v);
+                    return v;
+                }),
+                switchMap(async (v) => {
+                    console.log(v);
+                    await chrome.storage.local.set({
+                        partyUrl: v,
+                    });
+
+                    setPartyUrl(v);
+                    return v;
+                })
+            )
+        );
+    }, []);
+
+    return (
+        <main className="bg-slate-800 min-w-[400px] min-h-[400px]">
+            <div className="flex justify-center items-center w-full min-h-screen">
+                <div className="flex flex-col gap-5 justify-center items-center">
+                    <form
+                        className="w-full flex items-center gap-3"
+                        onSubmit={handleSubmit}
+                    >
+                        <Input
+                            name="partyUrl"
+                            label="Party Url"
+                            defaultValue={partyUrl}
+                            placeholder="http://localhost:3000"
+                            endContent={
+                                <Button size="sm" type="submit">
+                                    Submit
+                                </Button>
+                            }
+                        />
+                    </form>
+                    <div className="grid grid-cols-4 gap-5">
+                        <Button size="sm" color="primary" onPress={playCommand}>
+                            Play
+                        </Button>
+                        <Button size="sm" onPress={pauseCommand}>
+                            Pause
+                        </Button>
+                        <Button size="sm" onPress={nextCommand}>
+                            Next
+                        </Button>
+                        <Button size="sm" onPress={prevCommand}>
+                            Prev
+                        </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-5">
+                        <Button size="sm" onPress={muteCommand}>
+                            Mute
+                        </Button>
+                        <Button size="sm" onPress={volumeDownCommand}>
+                            Volume -
+                        </Button>
+                        <Button size="sm" onPress={volumeUpCommand}>
+                            Volume +
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    );
 }
 
-export default App
+export default App;

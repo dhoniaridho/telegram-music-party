@@ -1,9 +1,12 @@
 import { Subject, Observable } from "rxjs";
 import { io } from "socket.io-client";
 
-export function play(url?: string) {
-    if (url) {
-        return (window.location.href = `https://www.youtube.com/watch?v=${url}`);
+type Queue = { id: string; url: string };
+
+export function play(queue?: Queue) {
+    localStorage.setItem("current", JSON.stringify(queue));
+    if (queue?.url) {
+        return (window.location.href = `https://music.youtube.com/watch?v=${queue.url}&qid=${queue.id}`);
     }
 
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
@@ -49,18 +52,22 @@ export function volumeDown() {
 }
 
 export function mute() {
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+    const VIDEO_SELECTOR = ".volume";
 
-    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+    const el = document.querySelector(VIDEO_SELECTOR) as HTMLButtonElement;
 
     if (el) {
-        el.muted = !el.muted;
+        el.click();
     }
 }
 
-export function next() {
-    const NEXT_SELECTOR =
-        "#movie_player > div.ytp-chrome-bottom > div.ytp-chrome-controls > div.ytp-left-controls > a.ytp-next-button.ytp-button.ytp-playlist-ui";
+export function next(queue?: Queue) {
+    if (queue?.url) {
+        localStorage.setItem("current", JSON.stringify(queue));
+        return (window.location.href = `https://music.youtube.com/watch?v=${queue.url}&qid=${queue.id}`);
+    }
+
+    const NEXT_SELECTOR = ".next-button";
 
     const el = document.querySelector(NEXT_SELECTOR) as HTMLButtonElement;
 
@@ -70,8 +77,7 @@ export function next() {
 }
 
 export function prev() {
-    const PREV_SELECTOR =
-        "#movie_player > div.ytp-chrome-bottom > div.ytp-chrome-controls > div.ytp-left-controls > a.ytp-prev-button.ytp-button";
+    const PREV_SELECTOR = ".previous-button";
 
     const el = document.querySelector(PREV_SELECTOR) as HTMLButtonElement;
 
@@ -81,12 +87,12 @@ export function prev() {
 }
 
 export function resume() {
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+    const VIDEO_SELECTOR = "play-pause-button";
 
-    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+    const el = document.querySelector(VIDEO_SELECTOR) as HTMLButtonElement;
 
     if (el) {
-        el.play();
+        el.click();
     }
 }
 
@@ -204,21 +210,28 @@ chrome.storage.local.get("partyUrl", (result) => {
         el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
         if (!el) return;
         el.onended = () => {
-            socket.emit("ended");
+            socket.emit("ended", localStorage.getItem("current"));
+            localStorage.removeItem("current");
         };
 
         el.onplay = () => {
-            socket.emit("started");
+            socket.emit("started", {
+                id: new URL(window.location.href).searchParams.get("qid"),
+            });
         };
     }, 2000);
 
     if (el) {
         el.onended = () => {
-            socket.emit("ended");
+            socket.emit("ended", {
+                id: new URL(window.location.href).searchParams.get("qid"),
+            });
         };
 
         el.onplay = () => {
-            socket.emit("started");
+            socket.emit("started", {
+                id: new URL(window.location.href).searchParams.get("qid"),
+            });
         };
     }
 
@@ -226,16 +239,16 @@ chrome.storage.local.get("partyUrl", (result) => {
         console.log("Connected to WebSocket server with ID:", socket.id);
     });
 
-    socket.on("play", (data: { url: string }) => {
-        play(data.url);
+    socket.on("play", (data: Queue) => {
+        play(data);
     });
 
     socket.on("pause", () => {
         pause();
     });
 
-    socket.on("next", () => {
-        next();
+    socket.on("next", (data: Queue) => {
+        next(data);
     });
 
     socket.on("prev", () => {

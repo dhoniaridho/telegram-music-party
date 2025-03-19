@@ -41,7 +41,10 @@ export class PlaybackTelegramController {
 
     @Command('next')
     async next(@Ctx() ctx: Context) {
-        this.gateway.nextCommand();
+        await this.playbackService.removeLastPlayed();
+        const next = await this.playbackService.getNext();
+        console.log(next);
+        this.gateway.nextCommand(next);
         await ctx.reply('Next');
     }
 

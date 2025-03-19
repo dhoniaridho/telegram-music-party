@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
+    MessageBody,
     SubscribeMessage,
     WebSocketGateway,
     WebSocketServer,
@@ -25,9 +26,9 @@ export class PlaybackGateway {
         this.wss.emit('pause');
     }
 
-    nextCommand() {
+    nextCommand(queue?: Queue) {
         console.log("Emitting 'next' event to all clients...");
-        this.wss.emit('next');
+        this.wss.emit('next', queue);
     }
 
     previousCommand() {
@@ -50,15 +51,14 @@ export class PlaybackGateway {
     }
 
     @SubscribeMessage('ended')
-    async onEnd() {
-        console.log('Player ended');
-        await this.playbackService.removeLastPlayed();
+    async onEnd(@MessageBody() data: Queue) {
+        console.log('Player ended', data);
         const queue = await this.playbackService.play();
         if (queue) this.playCommand(queue);
     }
 
     @SubscribeMessage('started')
-    onStart() {
-        console.log('Playing');
+    async onStart() {
+        await this.playbackService.removeLastPlayed();
     }
 }

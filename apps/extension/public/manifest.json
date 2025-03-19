@@ -1,16 +1,16 @@
 {
     "manifest_version": 3,
-    "name": "YouTube Controller",
+    "name": "YouTube Music Party",
     "version": "1.0",
     "description": "Control YouTube playback from a popup or keyboard shortcuts.",
     "permissions": ["activeTab", "scripting", "tabs", "storage", "allow-scripts"],
-    "host_permissions": ["https://www.youtube.com/*"],
+    "host_permissions": ["https://music.youtube.com/*"],
     "action": {
         "default_popup": "index.html"
     },
     "content_scripts": [
         {
-            "matches": ["https://www.youtube.com/*"],
+            "matches": ["https://music.youtube.com/*"],
             "js": ["content.js"]
         }
     ]

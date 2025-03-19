@@ -121,12 +121,9 @@ export class PlaybackTelegramController {
 
     @Action(/queue:(.*)/)
     async addToQueue(@Ctx() ctx: any) {
-        console.log(ctx.match[1]);
+        const id = ctx.match[1] as string;
 
-        await this.playbackService.addToQueue(
-            ctx.match[1] as string,
-            ctx.match[1] as string,
-        );
+        await this.playbackService.addToQueue(id, id);
 
         await ctx.editMessageReplyMarkup({
             inline_keyboard: [],

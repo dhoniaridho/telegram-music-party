@@ -19,7 +19,8 @@ function App() {
         addToast({
             title: "Updated Party Config",
         });
-        chrome.tabs.query({}, (tabs) => {
+        const url = "*://*.youtube.com/*";
+        chrome.tabs.query({ url: url }, (tabs) => {
             tabs.forEach((t) => chrome.tabs.reload(t.id as number));
         });
     };

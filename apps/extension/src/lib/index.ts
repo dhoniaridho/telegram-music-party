@@ -1,7 +1,11 @@
 import { Subject, Observable } from "rxjs";
 import { io } from "socket.io-client";
 
-export function play() {
+export function play(url?: string) {
+    if (url) {
+        return (window.location.href = `https://www.youtube.com/watch?v=${url}`);
+    }
+
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
 
     const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
@@ -164,15 +168,56 @@ export function muteCommand() {
     });
 }
 
+export function onVideoFinished() {
+    getActiveTab().subscribe((tab) => {
+        if (!tab.id) throw new Error("Tab not found");
+        chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+                chrome.storage.local.get("partyUrl", (result) => {
+                    const socket = io(result.partyUrl);
+                    socket.emit("videoFinished");
+                });
+            },
+        });
+    });
+}
+
 chrome.storage.local.get("partyUrl", (result) => {
     const socket = io(result.partyUrl); // Replace with your server URL
+
+    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+
+    let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+
+    setInterval(() => {
+        el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+        if (!el) return;
+        el.onended = () => {
+            socket.emit("ended");
+        };
+
+        el.onplay = () => {
+            socket.emit("started");
+        };
+    }, 2000);
+
+    if (el) {
+        el.onended = () => {
+            socket.emit("ended");
+        };
+
+        el.onplay = () => {
+            socket.emit("started");
+        };
+    }
 
     socket.on("connect", () => {
         console.log("Connected to WebSocket server with ID:", socket.id);
     });
 
-    socket.on("play", () => {
-        play();
+    socket.on("play", (data: { url: string }) => {
+        play(data.url);
     });
 
     socket.on("pause", () => {

@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-    provider = "postgresql"
+    provider = "sqlite"
     url      = env("DATABASE_URL")
 }
 
@@ -18,4 +18,12 @@ model Room {
     name      String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+}
+
+model Queue {
+    id        String    @id @default(uuid())
+    title     String
+    url       String
+    createdAt DateTime? @default(now())
+    updatedAt DateTime  @updatedAt
 }

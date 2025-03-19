@@ -9,4 +9,5 @@ export const ENV = {
     SPOTIFY_CLIENT_ID: process.env.SPOTIFY_CLIENT_ID as string,
     SPOTIFY_CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET as string,
     CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET as string,
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY as string,
 };

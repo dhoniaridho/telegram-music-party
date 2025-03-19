@@ -80,6 +80,16 @@ export function prev() {
     }
 }
 
+export function resume() {
+    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+
+    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+
+    if (el) {
+        el.play();
+    }
+}
+
 function getActiveTab(): Observable<chrome.tabs.Tab> {
     const obs = new Subject<chrome.tabs.Tab>();
 
@@ -242,6 +252,10 @@ chrome.storage.local.get("partyUrl", (result) => {
 
     socket.on("mute", () => {
         mute();
+    });
+
+    socket.on("resume", () => {
+        resume();
     });
 
     socket.on("disconnect", () => {

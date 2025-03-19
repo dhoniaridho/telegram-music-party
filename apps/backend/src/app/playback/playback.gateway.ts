@@ -35,6 +35,10 @@ export class PlaybackGateway {
         this.wss.emit('prev');
     }
 
+    resumeCommand() {
+        this.wss.emit('resume');
+    }
+
     volumeUp() {
         console.log("Emitting 'volumeUp' event to all clients...");
         this.wss.emit('volumeUp');

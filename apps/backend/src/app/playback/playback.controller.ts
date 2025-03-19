@@ -7,7 +7,7 @@ import { ENV } from 'src/config/env';
 import axios from 'axios';
 import { InlineQueryResult } from 'telegraf/typings/core/types/typegram';
 import { YoutubeSearchResult } from 'src/types/yt';
-import { catchError, from, map, of, tap, throttleTime } from 'rxjs';
+import { catchError, from, map, of, switchMap, tap, throttleTime } from 'rxjs';
 import { PlaybackService } from './playback.service';
 @Update()
 export class PlaybackTelegramController {
@@ -120,22 +120,36 @@ export class PlaybackTelegramController {
     }
 
     @Action(/queue:(.*)/)
-    async addToQueue(@Ctx() ctx: any) {
+    addToQueue(@Ctx() ctx: any) {
         const id = ctx.match[1] as string;
+        const URL = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${id}&key=${ENV.GOOGLE_API_KEY}`;
 
-        await this.playbackService.addToQueue(id, id);
+        from(axios.get<YoutubeSearchResult>(URL))
+            .pipe(
+                map((v) => v.data.items[0]),
+                switchMap(async (v) => {
+                    await this.playbackService.addToQueue(id, v.snippet.title);
 
-        await ctx.editMessageReplyMarkup({
-            inline_keyboard: [],
-        });
-        await ctx.answerCbQuery('Ok');
+                    await ctx.editMessageReplyMarkup({
+                        inline_keyboard: [],
+                    });
+                    await ctx.answerCbQuery('Ok');
+                }),
+            )
+            .subscribe();
     }
 
     @Command('queue')
     async getQueue(@Ctx() ctx: Context) {
         const data = await this.playbackService.getQueue();
         await ctx.reply(
-            `Queue: \n${data.map((d, i) => `${i + 1} ${d.title}`).join('\n')}`,
+            `Queue: \n${data.map((d, i) => `${i + 1}. ${d.title}`).join('\n')}`,
         );
+    }
+
+    @Command('resume')
+    async resume(@Ctx() ctx: Context) {
+        this.gateway.resumeCommand();
+        await ctx.reply('Resuming');
     }
 }

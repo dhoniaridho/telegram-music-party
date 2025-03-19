@@ -1,6 +1,12 @@
 import { Subject, Observable } from "rxjs";
 import { io } from "socket.io-client";
 
+Object.defineProperty(window, "onbeforeunload", {
+    get: () => null,
+    set: () => {},
+    configurable: true
+});
+
 type Queue = { id: string; url: string };
 
 export function play(queue?: Queue) {
@@ -62,6 +68,7 @@ export function mute() {
 }
 
 export function next(queue?: Queue) {
+    
     if (queue?.url) {
         localStorage.setItem("current", JSON.stringify(queue));
         return (window.location.href = `https://music.youtube.com/watch?v=${queue.url}&qid=${queue.id}`);
@@ -73,6 +80,39 @@ export function next(queue?: Queue) {
 
     if (el) {
         el.click();
+    }
+}
+
+function simulateTyping(element: HTMLInputElement, text: string, delay = 100) {
+    element.value = ""; // Reset input value
+    element.dispatchEvent(new Event("input", { bubbles: true })); // Trigger input event for reset
+
+    let i = 0;
+
+    function typeCharacter() {
+        if (i < text.length) {
+            element.value += text[i]; // Append character
+            element.dispatchEvent(new Event("input", { bubbles: true })); // Trigger input event
+            element.dispatchEvent(
+                new KeyboardEvent("keydown", { key: text[i] })
+            ); // Simulate keydown
+            element.dispatchEvent(new KeyboardEvent("keyup", { key: text[i] })); // Simulate keyup
+            i++;
+            setTimeout(typeCharacter, delay); // Repeat with delay
+        } else {
+            element.dispatchEvent(new Event("change", { bubbles: true })); // Trigger change event at the end
+        }
+    }
+
+    typeCharacter();
+}
+
+export function search(q: string) {
+    const el = document.querySelector(
+        ".ytmusic-search-box input"
+    ) as HTMLInputElement;
+    if (el) {
+        simulateTyping(el, q, 100);
     }
 }
 
@@ -241,6 +281,10 @@ chrome.storage.local.get("partyUrl", (result) => {
 
     socket.on("play", (data: Queue) => {
         play(data);
+    });
+
+    socket.on("search", (query: string) => {
+        search(query);
     });
 
     socket.on("pause", () => {

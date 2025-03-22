@@ -280,6 +280,7 @@ chrome.storage.local.get(
                     return;
                 }
                 if (el.duration - el.currentTime < 2) {
+                    console.log("Still playin!");
                     // Trigger 2 seconds before end
                     if (!el.paused) {
                         // console.log("Still playin!");
@@ -306,6 +307,8 @@ chrome.storage.local.get(
                     return;
                 }
                 if (el.duration - el.currentTime < 2) {
+                    console.log("Still playin!");
+
                     // Trigger 2 seconds before end
                     if (!el.paused) {
                         console.log("Still playin!");
@@ -383,12 +386,11 @@ chrome.storage.local.get(
             tap(async (data) => {
                 console.log(data);
                 console.log(result.joined);
-                if (result.joined) {
-                    socket.emit("refreshQueue", data);
-                    return;
-                }
+                // if (result.joined) {
+                //     socket.emit("refreshQueue", data);
+                //     return;
+                // }
                 socket.emit("join", data);
-                await chrome.storage.local.set({ joined: true });
             })
         );
 

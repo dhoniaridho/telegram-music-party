@@ -67,7 +67,12 @@ function App() {
                             defaultValue={partyUrl}
                             placeholder="Room Id"
                         />
-                        <Button size="sm" type="submit" color="primary" className="w-full">
+                        <Button
+                            size="sm"
+                            type="submit"
+                            color="primary"
+                            className="w-full"
+                        >
                             Submit
                         </Button>
                     </form>

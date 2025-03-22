@@ -1,21 +1,16 @@
 import { useEffect, useState } from "react";
-import {
-    muteCommand,
-    nextCommand,
-    pauseCommand,
-    playCommand,
-    prevCommand,
-    volumeDownCommand,
-    volumeUpCommand,
-} from "./lib/chrome";
 import { addToast, Button, Input } from "@heroui/react";
-import { firstValueFrom, from, map, switchMap } from "rxjs";
+import { firstValueFrom, from, map, of, switchMap } from "rxjs";
 
 function App() {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
-        await chrome.storage.local.set({ partyUrl: data.get("partyUrl") });
+        await chrome.storage.local.set({
+            partyUrl: data.get("partyUrl"),
+            roomId: data.get("roomId"),
+        });
+
         addToast({
             title: "Updated Party Config",
         });
@@ -29,7 +24,7 @@ function App() {
 
     useEffect(() => {
         firstValueFrom(
-            from(chrome.storage.local.get("partyUrl")).pipe(
+            from(chrome.storage?.local?.get("partyUrl") || of()).pipe(
                 map((v) => v.partyUrl as string),
                 switchMap(async (v) => {
                     if (!v) {
@@ -57,7 +52,7 @@ function App() {
             <div className="flex justify-center items-center w-full min-h-screen">
                 <div className="flex flex-col gap-5 justify-center items-center">
                     <form
-                        className="w-full flex items-center gap-3"
+                        className="w-full flex items-center justify-center gap-3 flex-col"
                         onSubmit={handleSubmit}
                     >
                         <Input
@@ -65,38 +60,17 @@ function App() {
                             label="Party Url"
                             defaultValue={partyUrl}
                             placeholder="http://localhost:3000"
-                            endContent={
-                                <Button size="sm" type="submit">
-                                    Submit
-                                </Button>
-                            }
                         />
+                        <Input
+                            name="roomId"
+                            label="Room Id"
+                            defaultValue={partyUrl}
+                            placeholder="Room Id"
+                        />
+                        <Button size="sm" type="submit" color="primary" className="w-full">
+                            Submit
+                        </Button>
                     </form>
-                    <div className="grid grid-cols-4 gap-5">
-                        <Button size="sm" color="primary" onPress={playCommand}>
-                            Play
-                        </Button>
-                        <Button size="sm" onPress={pauseCommand}>
-                            Pause
-                        </Button>
-                        <Button size="sm" onPress={nextCommand}>
-                            Next
-                        </Button>
-                        <Button size="sm" onPress={prevCommand}>
-                            Prev
-                        </Button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-5">
-                        <Button size="sm" onPress={muteCommand}>
-                            Mute
-                        </Button>
-                        <Button size="sm" onPress={volumeDownCommand}>
-                            Volume -
-                        </Button>
-                        <Button size="sm" onPress={volumeUpCommand}>
-                            Volume +
-                        </Button>
-                    </div>
                 </div>
             </div>
         </main>

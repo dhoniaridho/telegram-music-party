@@ -1,13 +1,17 @@
-import { Subject, Observable } from "rxjs";
+import { Subject, Observable, from, map, tap } from "rxjs";
 import { io } from "socket.io-client";
+import { detect } from "detect-browser";
+import axios from "axios";
 
 Object.defineProperty(window, "onbeforeunload", {
     get: () => null,
     set: () => {},
-    configurable: true
+    configurable: true,
 });
-
 type Queue = { id: string; url: string };
+
+const artist =
+    "div.content-info-wrapper.style-scope.ytmusic-player-bar > span > span.subtitle.style-scope.ytmusic-player-bar > yt-formatted-string > a";
 
 export function play(queue?: Queue) {
     localStorage.setItem("current", JSON.stringify(queue));
@@ -68,7 +72,6 @@ export function mute() {
 }
 
 export function next(queue?: Queue) {
-    
     if (queue?.url) {
         localStorage.setItem("current", JSON.stringify(queue));
         return (window.location.href = `https://music.youtube.com/watch?v=${queue.url}&qid=${queue.id}`);
@@ -239,40 +242,60 @@ export function onVideoFinished() {
     });
 }
 
-chrome.storage.local.get("partyUrl", (result) => {
+type Storage = "partyUrl" | "roomId";
+
+chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
     const socket = io(result.partyUrl); // Replace with your server URL
 
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+    // const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
 
-    let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+    const join$ = from(
+        axios.get("https://ifconfig.me/all.json", {
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+        })
+    ).pipe(
+        map((res) => {
+            console.log(res.data);
+            // let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+            const info = detect();
+            const browser = [info?.name, info?.os].join(" ");
+            return {
+                id: result.roomId,
+                browser: browser,
+                ip: res.data.ip_addr,
+            };
+        }),
+        tap(console.log),
+        tap((data) => socket.emit("join", data))
+    );
 
-    setInterval(() => {
-        el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-        if (!el) return;
-        el.onended = () => {
-            socket.emit("ended", localStorage.getItem("current"));
-            localStorage.removeItem("current");
-        };
+    join$.subscribe();
 
-        el.onplay = () => {
-            socket.emit("started", {
-                id: new URL(window.location.href).searchParams.get("qid"),
-            });
-        };
-    }, 2000);
+    const playbackObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation, i) => {
+            if (
+                mutation.type === "childList" &&
+                i == 0 &&
+                mutation.target.textContent
+            ) {
+                const title = [
+                    mutation.target.textContent,
+                    document.querySelector(artist)?.textContent,
+                ].join(" - ");
+                socket.emit("change", title);
+            }
+        });
+    });
 
-    if (el) {
-        el.onended = () => {
-            socket.emit("ended", {
-                id: new URL(window.location.href).searchParams.get("qid"),
-            });
-        };
-
-        el.onplay = () => {
-            socket.emit("started", {
-                id: new URL(window.location.href).searchParams.get("qid"),
-            });
-        };
+    const titleElement = document.querySelector(".title.ytmusic-player-bar");
+    if (titleElement) {
+        playbackObserver.observe(titleElement, {
+            childList: true,
+            subtree: true,
+        });
     }
 
     socket.on("connect", () => {

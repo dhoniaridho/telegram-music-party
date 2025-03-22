@@ -9,19 +9,24 @@ generator client {
 }
 
 datasource db {
-    provider = "sqlite"
+    provider = "postgresql"
     url      = env("DATABASE_URL")
 }
 
 model Room {
-    id        String   @id @default(cuid())
+    id        String   @id @unique
+    chatId    String
     name      String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    Queue Queue[]
 }
 
 model Queue {
     id        String    @id @default(uuid())
+    roomId    String
+    room      Room      @relation(fields: [roomId], references: [id])
     title     String
     url       String
     createdAt DateTime? @default(now())

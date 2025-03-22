@@ -1,28 +1,46 @@
 import { Injectable } from '@nestjs/common';
 import { Queue } from '@prisma/client';
+import { InjectBot } from 'nestjs-telegraf';
 import { PrismaService } from 'src/platform/prisma.service';
+import { Context, Telegraf } from 'telegraf';
 
 @Injectable()
 export class PlaybackService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        @InjectBot() private bot: Telegraf<Context>,
+    ) {}
 
-    async addToQueue(videoId: string, title: string) {
+    async addToQueue(roomId: string, videoId: string, title: string) {
         await this.prisma.queue.create({
             data: {
+                roomId,
                 url: videoId,
                 title: title,
             },
         });
     }
 
-    async removeLastPlayed() {
+    async removeQueue(roomId: string, videoId: string) {
+        await this.prisma.queue.deleteMany({
+            where: {
+                roomId,
+                url: videoId,
+            },
+        });
+    }
+
+    async removeLastPlayed(roomId: string) {
         const data = await this.prisma.queue.findFirst({
+            where: {
+                roomId,
+            },
             orderBy: {
                 createdAt: 'asc',
             },
         });
 
-        console.log(data);
+        // console.log(data);
         console.log('[OK] remove queue');
 
         if (!data) return;
@@ -34,8 +52,11 @@ export class PlaybackService {
         });
     }
 
-    async play() {
+    async getQueue(roomId: string) {
         const data = await this.prisma.queue.findFirst({
+            where: {
+                roomId,
+            },
             orderBy: {
                 createdAt: 'asc',
             },
@@ -44,8 +65,11 @@ export class PlaybackService {
         return data;
     }
 
-    async getQueue() {
+    async getQueues(roomId: string) {
         return this.prisma.queue.findMany({
+            where: {
+                roomId,
+            },
             orderBy: {
                 createdAt: 'asc',
             },
@@ -59,5 +83,35 @@ export class PlaybackService {
             },
         });
         return nextItem as Queue;
+    }
+
+    async addRoom(roomID: string, chatId: string, name: string) {
+        await this.prisma.room.create({
+            data: {
+                id: roomID,
+                chatId,
+                name,
+            },
+        });
+    }
+
+    async getRoom(roomId: string) {
+        return this.prisma.room.findFirst({
+            where: {
+                id: roomId,
+            },
+        });
+    }
+
+    async getRoomByChatId(chatId: string) {
+        return this.prisma.room.findFirst({
+            where: {
+                chatId,
+            },
+        });
+    }
+
+    async sendMessage(chatId: string, message: string) {
+        await this.bot.telegram.sendMessage(chatId, message);
     }
 }

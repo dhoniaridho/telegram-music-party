@@ -1,19 +1,22 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Update, Ctx, Start, Command, On, Action } from 'nestjs-telegraf';
-import { Context, Markup } from 'telegraf';
+import { Ctx, Start, Command, On, Action, Update } from 'nestjs-telegraf';
+import { Context, Markup, NarrowedContext } from 'telegraf';
 import { PlaybackGateway } from './playback.gateway';
-import { ENV } from 'src/config/env';
-import axios from 'axios';
-import { InlineQueryResult } from 'telegraf/typings/core/types/typegram';
-import { YoutubeSearchResult } from 'src/types/yt';
-import { catchError, from, map, of, switchMap, tap, throttleTime } from 'rxjs';
+import {
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineQueryResult,
+    Update as UpdateType,
+} from 'telegraf/typings/core/types/typegram';
 import { PlaybackService } from './playback.service';
+import { getRandomHumanReadable } from '@marianmeres/random-human-readable';
+import { YTMusicService } from 'src/platform/yt-music.service';
+import { formatDuration } from 'src/helpers/util';
 @Update()
 export class PlaybackTelegramController {
     constructor(
         private readonly gateway: PlaybackGateway,
         private readonly playbackService: PlaybackService,
+        private readonly ytmusicService: YTMusicService,
     ) {}
 
     @Start()
@@ -21,130 +24,360 @@ export class PlaybackTelegramController {
         await ctx.reply('Welcome');
     }
 
+    @Command('join')
+    async join(@Ctx() ctx: Context & { message: { chat: { title: string } } }) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        // get room from current chat id
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (room) {
+            await ctx.reply(
+                `<code>${room.id}</code> already exists for this chat`,
+                {
+                    parse_mode: 'HTML',
+                },
+            );
+            return;
+        }
+
+        // generate readable room id
+        const roomId = getRandomHumanReadable({
+            adjCount: 1,
+            colorsCount: 0,
+            nounsCount: 2,
+            joinWith: '-',
+        });
+
+        await this.playbackService.addRoom(
+            roomId as string,
+            chatId,
+            ctx.message?.chat.title || '',
+        );
+
+        await ctx.reply(`<code>${(roomId as string) || 'No chat id'}</code>`, {
+            parse_mode: 'HTML',
+        });
+    }
+
     @Command('play')
     async play(@Ctx() ctx: Context) {
-        const queue = await this.playbackService.play();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+
+        const queue = await this.playbackService.getQueue(roomId);
         if (!queue) {
             await ctx.reply('Empty queue');
             return;
         }
-        this.gateway.playCommand(queue);
 
-        await ctx.reply('Playing');
+        this.gateway.playCommand(roomId, queue);
+
+        await ctx.reply(`${queue.title} is now playing`);
     }
 
     @Command('pause')
     async pause(@Ctx() ctx: Context) {
-        this.gateway.pauseCommand();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        this.gateway.pauseCommand(roomId);
         await ctx.reply('Paused');
     }
 
     @Command('next')
     async next(@Ctx() ctx: Context) {
-        await this.playbackService.removeLastPlayed();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        await this.playbackService.removeLastPlayed(roomId);
         const next = await this.playbackService.getNext();
-        console.log(next);
-        this.gateway.nextCommand(next);
+
+        this.gateway.nextCommand(roomId, next);
         await ctx.reply('Next');
     }
 
     @Command('prev')
     async prev(@Ctx() ctx: Context) {
-        this.gateway.previousCommand();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        this.gateway.previousCommand(roomId);
         await ctx.reply('Previous');
     }
 
     @Command('volumeUp')
     async volumeUp(@Ctx() ctx: Context) {
-        this.gateway.volumeUp();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        this.gateway.volumeUp(roomId);
         await ctx.reply('Volume Up');
     }
 
     @Command('volumeDown')
     async volumeDown(@Ctx() ctx: Context) {
-        this.gateway.volumeDown();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        this.gateway.volumeDown(roomId);
         await ctx.reply('Volume Down');
     }
 
     @On('inline_query')
-    search(@Ctx() ctx: any) {
-        const API_KEY = ENV.GOOGLE_API_KEY; // Replace with your API key
-        const SEARCH_QUERY = ctx?.update?.inline_query?.query as string; // Change to your search keyword
-        const MAX_RESULTS = 10;
-        const API_URL = `https://www.googleapis.com/youtube/v3/search?videoCategoryId=10&type=video&part=snippet&q=${encodeURIComponent(SEARCH_QUERY)}&type=video&maxResults=${MAX_RESULTS}&key=${API_KEY}`;
+    async search(
+        @Ctx()
+        ctx: NarrowedContext<Context<UpdateType>, UpdateType.InlineQueryUpdate>,
+    ) {
+        try {
+            // get songs
+            const searchQuery = ctx?.update?.inline_query?.query; // Change to your search keyword
 
-        const data = axios.get<YoutubeSearchResult>(API_URL);
-        from(data)
-            .pipe(
-                throttleTime(3000),
-                map((v) => v.data),
-                map((v) => {
-                    console.log(JSON.stringify(v));
-                    return v.items
-                        .filter((i) => i.id.videoId)
-                        .map((item) => {
-                            return {
-                                type: 'article',
-                                id: item.etag,
-                                title: `${item.snippet.title} - ${item.snippet.channelTitle} @queue:${item.id.videoId}`,
-                                description: `${item.snippet.channelTitle} `,
-                                url: item.snippet.thumbnails.medium.url,
-                                thumbnail_height: 50,
-                                input_message_content: {
-                                    message_text: `${item.snippet.title} - ${item.snippet.channelTitle}\n${item.snippet.thumbnails.medium.url}`,
-                                },
-                                thumbnail_url:
-                                    item.snippet.thumbnails.medium.url,
-                                reply_markup: {
-                                    inline_keyboard: [
-                                        [
-                                            Markup.button.callback(
-                                                'Add to Queue',
-                                                `queue:${item.id.videoId}`,
-                                            ),
-                                        ],
-                                    ],
-                                },
-                            } satisfies InlineQueryResult;
-                        });
-                }),
-                tap((r) => {
-                    console.log('[OK] search');
-                    // console.log(r);
-                    ctx.answerInlineQuery(r);
-                }),
-                catchError((e) => {
-                    console.log('[ERROR] search');
-                    console.log(e);
-                    return of();
-                }),
-            )
-            .subscribe();
+            if (!searchQuery || searchQuery.length < 3) return;
+
+            const songs = await this.ytmusicService.searchSongs(searchQuery);
+
+            const senderID = ctx.from.id;
+
+            const videoIds: string[] = [];
+
+            await ctx.answerInlineQuery(
+                songs
+                    .map(
+                        (row): InlineQueryResult => ({
+                            id: `${row.videoId}`,
+                            type: 'article',
+                            title: row.name,
+                            description: `${row.artist.name} • ${row.album?.name} • ${formatDuration(row.duration || 0)}`,
+                            thumbnail_url: row.thumbnails[0].url,
+                            input_message_content: {
+                                photo_url: row.thumbnails[0].url,
+                                message_text: `${row.name} by ${row.artist.name}`,
+                            },
+                            ...Markup.inlineKeyboard([
+                                // [
+                                //   Markup.button.callback(
+                                //     "Play Next",
+                                //     `play-this-next-${userID}:${row.musicID}`,
+                                //   ),
+                                // ],
+                                [
+                                    Markup.button.callback(
+                                        'Add to Queue',
+                                        `queue:${senderID}:${row.videoId}`,
+                                    ),
+                                ],
+                                [
+                                    Markup.button.callback(
+                                        'Cancel',
+                                        `cancel:${senderID}`,
+                                    ),
+                                ],
+                            ]),
+                        }),
+                    )
+                    .filter((r) => {
+                        if (videoIds.includes(r.id)) return false;
+                        videoIds.push(r.id);
+                        return true;
+                    }),
+            );
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    @On('edited_message')
+    async editedMessage(@Ctx() ctx: Context) {
+        if (!ctx.editedMessage?.via_bot?.is_bot) return;
+
+        const inlineKeyboard = ctx.editedMessage.reply_markup?.inline_keyboard;
+        if (!inlineKeyboard || inlineKeyboard?.length === 0) return;
+
+        const buttons = inlineKeyboard[0];
+        if (buttons.length === 0) return;
+
+        const addToQueueBtn = buttons[0] as InlineKeyboardButton.CallbackButton;
+
+        if (
+            addToQueueBtn.text !== 'Verifying..' ||
+            !addToQueueBtn.callback_data.startsWith('verify:')
+        )
+            return;
+
+        const videoId = addToQueueBtn.callback_data.split(':')[1];
+
+        const song = await this.ytmusicService.getSong(videoId);
+
+        const messageInlineID = addToQueueBtn.callback_data.split(':')[2];
+
+        // get the room
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) return;
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.telegram.editMessageText(
+                undefined,
+                undefined,
+                messageInlineID,
+                'Music Party not available in this chat',
+            );
+            return;
+        }
+
+        const roomId = room.id;
+
+        const songCombined = `${song.name} - ${song.artist.name} [${formatDuration(
+            song.duration || 0,
+        )}]`;
+
+        await this.playbackService.addToQueue(roomId, videoId, songCombined);
+
+        // emit new queues
+        this.gateway.updateQueue(
+            roomId,
+            await this.playbackService.getQueues(roomId),
+        );
+
+        await ctx.telegram.editMessageText(
+            undefined,
+            undefined,
+            messageInlineID,
+            `${songCombined} added to queue`,
+        );
     }
 
     @Action(/queue:(.*)/)
-    addToQueue(@Ctx() ctx: any) {
-        const id = ctx.match[1] as string;
-        const URL = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${id}&key=${ENV.GOOGLE_API_KEY}`;
+    async addToQueue(
+        @Ctx()
+        ctx: Context<UpdateType.CallbackQueryUpdate<CallbackQuery>> &
+            Omit<Context<UpdateType>, keyof Context<UpdateType>> & {
+                match: RegExpExecArray;
+            },
+    ) {
+        const [senderID, videoId] = ctx.match[1].split(':');
 
-        from(axios.get<YoutubeSearchResult>(URL))
-            .pipe(
-                map((v) => v.data.items[0]),
-                switchMap(async (v) => {
-                    await this.playbackService.addToQueue(id, v.snippet.title);
+        if (!videoId || !senderID) return;
 
-                    await ctx.editMessageReplyMarkup({
-                        inline_keyboard: [],
-                    });
-                    await ctx.answerCbQuery('Ok');
-                }),
-            )
-            .subscribe();
+        if (parseInt(senderID) !== ctx.from.id) {
+            await ctx.answerCbQuery('You are not allowed to add this song');
+            return;
+        }
+
+        await ctx.editMessageReplyMarkup({
+            inline_keyboard: [
+                [
+                    Markup.button.callback(
+                        `Verifying..`,
+                        `verify:${videoId}:${ctx.update.callback_query.inline_message_id}`,
+                    ),
+                ],
+            ],
+        });
+    }
+
+    @Action(/cancel:(.*)/)
+    async cancelQueue(
+        @Ctx()
+        ctx: Context<UpdateType.CallbackQueryUpdate<CallbackQuery>> &
+            Omit<Context<UpdateType>, keyof Context<UpdateType>> & {
+                match: RegExpExecArray;
+            },
+    ) {
+        const [senderID] = ctx.match[1].split(':');
+
+        if (!senderID) return;
+
+        if (parseInt(senderID) !== ctx.from.id) {
+            await ctx.answerCbQuery('You are not allowed to add this song');
+            return;
+        }
+
+        await ctx.answerCbQuery('Canceling...');
+        await ctx.editMessageText('Canceled');
     }
 
     @Command('queue')
-    async getQueue(@Ctx() ctx: Context) {
-        const data = await this.playbackService.getQueue();
+    async getQueues(@Ctx() ctx: Context) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        const data = await this.playbackService.getQueues(roomId);
         await ctx.reply(
             `Queue: \n${data.map((d, i) => `${i + 1}. ${d.title}`).join('\n')}`,
         );
@@ -152,7 +385,20 @@ export class PlaybackTelegramController {
 
     @Command('resume')
     async resume(@Ctx() ctx: Context) {
-        this.gateway.resumeCommand();
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const roomId = room.id;
+        this.gateway.resumeCommand(roomId);
         await ctx.reply('Resuming');
     }
 }

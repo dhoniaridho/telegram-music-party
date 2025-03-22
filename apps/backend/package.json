@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@marianmeres/random-human-readable": "^1.6.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
@@ -33,7 +34,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "ytmusic-api": "^5.3.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

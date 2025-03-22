@@ -3,7 +3,7 @@
     "name": "YouTube Music Party",
     "version": "1.0",
     "description": "Control YouTube playback from a popup or keyboard shortcuts.",
-    "permissions": ["activeTab", "scripting", "tabs", "storage", "gcm", "identity"],
+    "permissions": ["activeTab", "scripting", "tabs", "storage", "gcm", "identity", "management"],
     "host_permissions": ["https://music.youtube.com/*"],
     "action": {
         "default_popup": "index.html"

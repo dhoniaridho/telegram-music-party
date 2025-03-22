@@ -14,9 +14,8 @@ const artist =
     "div.content-info-wrapper.style-scope.ytmusic-player-bar > span > span.subtitle.style-scope.ytmusic-player-bar > yt-formatted-string > a";
 
 export function play(queue?: Queue) {
-    localStorage.setItem("current", JSON.stringify(queue));
     if (queue?.url) {
-        return (window.location.href = `https://music.youtube.com/watch?v=${queue.url}&qid=${queue.id}`);
+        history.replaceState(null, "", `/watch?v=${queue.url}&qid=${queue.id}`);
     }
 
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
@@ -76,8 +75,7 @@ export function mute() {
 
 export function next(queue?: Queue) {
     if (queue?.url) {
-        localStorage.setItem("current", JSON.stringify(queue));
-        return (window.location.href = `https://music.youtube.com/watch?v=${queue.url}&qid=${queue.id}`);
+        history.replaceState(null, "", `/watch?v=${queue.url}&qid=${queue.id}`);
     }
 
     const NEXT_SELECTOR = ".next-button";
@@ -245,222 +243,231 @@ export function onVideoFinished() {
     });
 }
 
-type Storage = "partyUrl" | "roomId";
+type Storage = "partyUrl" | "roomId" | "joined";
 
-chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
-    const socket = io(result.partyUrl); // Replace with your server URL
-    const ROOM_ID = result.roomId as string;
+chrome.storage.local.get(
+    ["partyUrl", "roomId", "joined"] as Storage[],
+    (result) => {
+        const socket = io(result.partyUrl); // Replace with your server URL
+        const ROOM_ID = result.roomId as string;
 
-    let queues: Queue[] = [];
+        let queues: Queue[] = [];
 
-    socket.on("queues", (data) => {
-        queues = data;
-    });
+        socket.on("queues", (data) => {
+            queues = data;
+        });
 
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+        const VIDEO_SELECTOR =
+            "#movie_player > div.html5-video-container > video";
 
-    let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+        let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
 
-    const endedPayload = {
-        roomId: ROOM_ID,
-        lastVideoId: "",
-    };
+        const endedPayload = {
+            roomId: ROOM_ID,
+            lastVideoId: "",
+        };
 
-    setInterval(() => {
-        if (!el) return;
+        setInterval(() => {
+            if (!el) return;
 
-        el.ontimeupdate = () => {
-            endedPayload.lastVideoId = new URL(
-                window.location.href
-            ).searchParams.get("v") as string;
-            el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-            if (queues.length == 0) {
-                return;
-            }
-            if (el.duration - el.currentTime < 2) {
-                // Trigger 2 seconds before end
-                if (!el.paused) {
-                    // console.log("Still playin!");
-                    pause();
-                    socket.emit("ended", endedPayload);
+            el.ontimeupdate = () => {
+                endedPayload.lastVideoId = new URL(
+                    window.location.href
+                ).searchParams.get("v") as string;
+                el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+                if (queues.length == 0) {
+                    return;
                 }
-            }
-        };
-
-        el.onplay = () => {
-            socket.emit("started", {
-                id: new URL(window.location.href).searchParams.get("qid"),
-            });
-        };
-    }, 2000);
-
-    if (el) {
-        el.ontimeupdate = () => {
-            el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-            endedPayload.lastVideoId = new URL(
-                window.location.href
-            ).searchParams.get("v") as string;
-            if (queues.length == 0) {
-                return;
-            }
-            if (el.duration - el.currentTime < 2) {
-                // Trigger 2 seconds before end
-                if (!el.paused) {
-                    console.log("Still playin!");
-                    pause();
-                    socket.emit("ended", endedPayload);
-                }
-            }
-        };
-
-        el.onplay = () => {
-            socket.emit("started", {
-                id: new URL(window.location.href).searchParams.get("qid"),
-            });
-        };
-    }
-
-    const join$ = from(
-        axios.get("https://ifconfig.me/all.json", {
-            headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-            },
-        })
-    ).pipe(
-        switchMap((res) => {
-            return new Promise<{ id: string; browser: string; ip: string }>(
-                (resolve, reject) => {
-                    try {
-                        const info = detect();
-
-                        const accountButton = document.querySelector(
-                            '[aria-label="Open avatar menu"]'
-                        ) as HTMLButtonElement;
-
-                        accountButton.click();
-
-                        const querySelector = document.querySelector(
-                            '[class="style-scope tp-yt-iron-dropdown"]'
-                        ) as HTMLDivElement;
-                        if (querySelector) {
-                            querySelector.style.display = "hidden";
-                        }
-                        accountButton.click();
-                        if (querySelector) {
-                            querySelector.style.display = "inherit";
-                        }
-
-                        setTimeout(() => {
-                            accountButton.click();
-                            const user = document.querySelector(
-                                "#account-name"
-                            ) as HTMLDivElement;
-
-                            console.log(user);
-                            const browser = [
-                                user?.textContent,
-                                info?.name,
-                                info?.os,
-                            ]
-                                .filter(Boolean)
-                                .join(" ");
-
-                            resolve({
-                                id: result.roomId,
-                                browser: browser,
-                                ip: res.data.ip_addr,
-                            });
-                        }, 300);
-                    } catch (error) {
-                        reject(error);
+                if (el.duration - el.currentTime < 2) {
+                    // Trigger 2 seconds before end
+                    if (!el.paused) {
+                        // console.log("Still playin!");
+                        pause();
+                        socket.emit("ended", endedPayload);
                     }
                 }
-            );
-        }),
-        tap((data) => {
-            if (!sessionStorage.getItem("roomId")) {
-                socket.emit("join", data);
-            }
-            sessionStorage.setItem("roomId", data.id);
-            socket.emit("refreshQueue", data);
-        })
-    );
+            };
 
-    join$.subscribe();
-
-    const playbackObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation, i) => {
-            if (
-                mutation.type === "childList" &&
-                i == 0 &&
-                mutation.target.textContent
-            ) {
-                const title = [
-                    mutation.target.textContent,
-                    document.querySelector(artist)?.textContent,
-                ].join(" - ");
-                socket.emit("change", {
-                    title,
-                    videoId: new URL(window.location.href).searchParams.get(
-                        "v"
-                    ),
-                    roomId: ROOM_ID,
+            el.onplay = () => {
+                socket.emit("started", {
+                    id: new URL(window.location.href).searchParams.get("qid"),
                 });
-            }
-        });
-    });
+            };
+        }, 2000);
 
-    const titleElement = document.querySelector(".title.ytmusic-player-bar");
-    if (titleElement) {
-        playbackObserver.observe(titleElement, {
-            childList: true,
-            subtree: true,
+        if (el) {
+            el.ontimeupdate = () => {
+                el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+                endedPayload.lastVideoId = new URL(
+                    window.location.href
+                ).searchParams.get("v") as string;
+                if (queues.length == 0) {
+                    return;
+                }
+                if (el.duration - el.currentTime < 2) {
+                    // Trigger 2 seconds before end
+                    if (!el.paused) {
+                        console.log("Still playin!");
+                        pause();
+                        socket.emit("ended", endedPayload);
+                    }
+                }
+            };
+
+            el.onplay = () => {
+                socket.emit("started", {
+                    id: new URL(window.location.href).searchParams.get("qid"),
+                });
+            };
+        }
+
+        const join$ = from(
+            axios.get("https://ifconfig.me/all.json", {
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+            })
+        ).pipe(
+            switchMap((res) => {
+                return new Promise<{ id: string; browser: string; ip: string }>(
+                    (resolve, reject) => {
+                        try {
+                            const info = detect();
+
+                            const accountButton = document.querySelector(
+                                '[aria-label="Open avatar menu"]'
+                            ) as HTMLButtonElement;
+
+                            accountButton.click();
+
+                            const querySelector = document.querySelector(
+                                '[class="style-scope tp-yt-iron-dropdown"]'
+                            ) as HTMLDivElement;
+                            if (querySelector) {
+                                querySelector.style.display = "hidden";
+                            }
+                            accountButton.click();
+                            if (querySelector) {
+                                querySelector.style.display = "inherit";
+                            }
+
+                            setTimeout(() => {
+                                accountButton.click();
+                                const user = document.querySelector(
+                                    "#account-name"
+                                ) as HTMLDivElement;
+
+                                console.log(user);
+                                const browser = [
+                                    user?.textContent,
+                                    info?.name,
+                                    info?.os,
+                                ]
+                                    .filter(Boolean)
+                                    .join(" ");
+
+                                resolve({
+                                    id: result.roomId,
+                                    browser: browser,
+                                    ip: res.data.ip_addr,
+                                });
+                            }, 300);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    }
+                );
+            }),
+            tap((data) => {
+                console.log(data);
+                console.log(result.joined);
+                if (result.joined) {
+                    socket.emit("refreshQueue", data);
+                    return;
+                }
+                socket.emit("join", data);
+                chrome.storage.local.set({ joined: true });
+            })
+        );
+
+        const playbackObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation, i) => {
+                if (
+                    mutation.type === "childList" &&
+                    i == 0 &&
+                    mutation.target.textContent
+                ) {
+                    const title = [
+                        mutation.target.textContent,
+                        document.querySelector(artist)?.textContent,
+                    ].join(" - ");
+                    socket.emit("change", {
+                        title,
+                        videoId: new URL(window.location.href).searchParams.get(
+                            "v"
+                        ),
+                        roomId: ROOM_ID,
+                    });
+                }
+            });
+        });
+
+        const titleElement = document.querySelector(
+            ".title.ytmusic-player-bar"
+        );
+        if (titleElement) {
+            playbackObserver.observe(titleElement, {
+                childList: true,
+                subtree: true,
+            });
+        }
+
+        socket.on("connect", () => {
+            console.log("Connected to WebSocket server with ID:", socket.id);
+            join$.subscribe();
+        });
+
+        socket.on("play", (data: Queue) => {
+            console.log(data);
+            play(data);
+        });
+
+        socket.on("search", (query: string) => {
+            search(query);
+        });
+
+        socket.on("pause", () => {
+            pause();
+        });
+
+        socket.on("next", (data: Queue) => {
+            console.log(data);
+            next(data);
+        });
+
+        socket.on("prev", () => {
+            prev();
+        });
+
+        socket.on("volumeUp", () => {
+            volumeUp();
+        });
+
+        socket.on("volumeDown", () => {
+            volumeDown();
+        });
+
+        socket.on("mute", () => {
+            mute();
+        });
+
+        socket.on("resume", () => {
+            resume();
+        });
+
+        socket.on("disconnect", () => {
+            console.log("Disconnected from WebSocket server");
         });
     }
-
-    socket.on("connect", () => {
-        console.log("Connected to WebSocket server with ID:", socket.id);
-    });
-
-    socket.on("play", (data: Queue) => {
-        console.log(data);
-        play(data);
-    });
-
-    socket.on("search", (query: string) => {
-        search(query);
-    });
-
-    socket.on("pause", () => {
-        pause();
-    });
-
-    socket.on("next", (data: Queue) => {
-        next(data);
-    });
-
-    socket.on("prev", () => {
-        prev();
-    });
-
-    socket.on("volumeUp", () => {
-        volumeUp();
-    });
-
-    socket.on("volumeDown", () => {
-        volumeDown();
-    });
-
-    socket.on("mute", () => {
-        mute();
-    });
-
-    socket.on("resume", () => {
-        resume();
-    });
-
-    socket.on("disconnect", () => {
-        console.log("Disconnected from WebSocket server");
-    });
-});
+);

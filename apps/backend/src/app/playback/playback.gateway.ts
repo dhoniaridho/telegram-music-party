@@ -124,7 +124,10 @@ export class PlaybackGateway {
     }
 
     @SubscribeMessage('refreshQueue')
-    async refresh(@MessageBody() data: Join) {
+    async refresh(
+        @ConnectedSocket() socket: Socket,
+        @MessageBody() data: Join,
+    ) {
         // get room
         const room = await this.playbackService.getRoom(data.id);
 
@@ -136,6 +139,8 @@ export class PlaybackGateway {
         // get queues
         const queues = await this.playbackService.getQueues(room.id);
         this.wss.to(room.id).emit('queues', queues);
+
+        void socket.join(room.id);
     }
 
     @SubscribeMessage('change')

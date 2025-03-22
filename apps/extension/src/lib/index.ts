@@ -379,10 +379,10 @@ chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
             );
         }),
         tap((data) => {
-            if (!localStorage.getItem("roomId")) {
+            if (!sessionStorage.getItem("roomId")) {
                 socket.emit("join", data);
             }
-            localStorage.setItem("roomId", data.id);
+            sessionStorage.setItem("roomId", data.id);
             socket.emit("refreshQueue", data);
         })
     );

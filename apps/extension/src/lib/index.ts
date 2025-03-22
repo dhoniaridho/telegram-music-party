@@ -8,6 +8,7 @@ Object.defineProperty(window, "onbeforeunload", {
     set: () => {},
     configurable: true,
 });
+
 type Queue = { id: string; url: string };
 
 const artist =
@@ -15,7 +16,7 @@ const artist =
 
 export function play(queue?: Queue) {
     if (queue?.url) {
-        history.replaceState(null, "", `/watch?v=${queue.url}&qid=${queue.id}`);
+        window.location.href = `/watch?v=${queue.url}&qid=${queue.id}`;
     }
 
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
@@ -75,7 +76,7 @@ export function mute() {
 
 export function next(queue?: Queue) {
     if (queue?.url) {
-        history.replaceState(null, "", `/watch?v=${queue.url}&qid=${queue.id}`);
+        window.location.href = `/watch?v=${queue.url}&qid=${queue.id}`;
     }
 
     const NEXT_SELECTOR = ".next-button";
@@ -379,7 +380,7 @@ chrome.storage.local.get(
                     }
                 );
             }),
-            tap((data) => {
+            tap(async (data) => {
                 console.log(data);
                 console.log(result.joined);
                 if (result.joined) {
@@ -387,7 +388,7 @@ chrome.storage.local.get(
                     return;
                 }
                 socket.emit("join", data);
-                chrome.storage.local.set({ joined: true });
+                await chrome.storage.local.set({ joined: true });
             })
         );
 

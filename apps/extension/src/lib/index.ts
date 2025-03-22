@@ -1,4 +1,4 @@
-import { Subject, Observable, from, map, tap } from "rxjs";
+import { Subject, Observable, from, tap, switchMap } from "rxjs";
 import { io } from "socket.io-client";
 import { detect } from "detect-browser";
 import axios from "axios";
@@ -33,12 +33,15 @@ export function play(queue?: Queue) {
  */
 export function pause() {
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
-
-    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-
-    if (el) {
-        el.pause();
+    const vid = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+    if (vid) {
+        vid.pause();
     }
+    // const el = document.getElementById(
+    //     "play-pause-button"
+    // ) as HTMLButtonElement;
+    // if (!el) return;
+    // el.click();
 }
 
 export function volumeUp() {
@@ -246,8 +249,76 @@ type Storage = "partyUrl" | "roomId";
 
 chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
     const socket = io(result.partyUrl); // Replace with your server URL
+    const ROOM_ID = result.roomId as string;
 
-    // const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+    let queues: Queue[] = [];
+
+    socket.on("queues", (data) => {
+        queues = data;
+    });
+
+    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+
+    let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+
+    const endedPayload = {
+        roomId: ROOM_ID,
+        lastVideoId: "",
+    };
+
+    setInterval(() => {
+        if (!el) return;
+
+        el.ontimeupdate = () => {
+            endedPayload.lastVideoId = new URL(
+                window.location.href
+            ).searchParams.get("v") as string;
+            el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+            if (queues.length == 0) {
+                return;
+            }
+            if (el.duration - el.currentTime < 2) {
+                // Trigger 2 seconds before end
+                if (!el.paused) {
+                    // console.log("Still playin!");
+                    pause();
+                    socket.emit("ended", endedPayload);
+                }
+            }
+        };
+
+        el.onplay = () => {
+            socket.emit("started", {
+                id: new URL(window.location.href).searchParams.get("qid"),
+            });
+        };
+    }, 2000);
+
+    if (el) {
+        el.ontimeupdate = () => {
+            el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+            endedPayload.lastVideoId = new URL(
+                window.location.href
+            ).searchParams.get("v") as string;
+            if (queues.length == 0) {
+                return;
+            }
+            if (el.duration - el.currentTime < 2) {
+                // Trigger 2 seconds before end
+                if (!el.paused) {
+                    console.log("Still playin!");
+                    pause();
+                    socket.emit("ended", endedPayload);
+                }
+            }
+        };
+
+        el.onplay = () => {
+            socket.emit("started", {
+                id: new URL(window.location.href).searchParams.get("qid"),
+            });
+        };
+    }
 
     const join$ = from(
         axios.get("https://ifconfig.me/all.json", {
@@ -257,19 +328,63 @@ chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
             },
         })
     ).pipe(
-        map((res) => {
-            console.log(res.data);
-            // let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-            const info = detect();
-            const browser = [info?.name, info?.os].join(" ");
-            return {
-                id: result.roomId,
-                browser: browser,
-                ip: res.data.ip_addr,
-            };
+        switchMap((res) => {
+            return new Promise<{ id: string; browser: string; ip: string }>(
+                (resolve, reject) => {
+                    try {
+                        const info = detect();
+
+                        const accountButton = document.querySelector(
+                            '[aria-label="Open avatar menu"]'
+                        ) as HTMLButtonElement;
+
+                        accountButton.click();
+
+                        const querySelector = document.querySelector(
+                            '[class="style-scope tp-yt-iron-dropdown"]'
+                        ) as HTMLDivElement;
+                        if (querySelector) {
+                            querySelector.style.display = "hidden";
+                        }
+                        accountButton.click();
+                        if (querySelector) {
+                            querySelector.style.display = "inherit";
+                        }
+
+                        setTimeout(() => {
+                            accountButton.click();
+                            const user = document.querySelector(
+                                "#account-name"
+                            ) as HTMLDivElement;
+
+                            console.log(user);
+                            const browser = [
+                                user?.textContent,
+                                info?.name,
+                                info?.os,
+                            ]
+                                .filter(Boolean)
+                                .join(" ");
+
+                            resolve({
+                                id: result.roomId,
+                                browser: browser,
+                                ip: res.data.ip_addr,
+                            });
+                        }, 300);
+                    } catch (error) {
+                        reject(error);
+                    }
+                }
+            );
         }),
-        tap(console.log),
-        tap((data) => socket.emit("join", data))
+        tap((data) => {
+            if (!localStorage.getItem("roomId")) {
+                socket.emit("join", data);
+            }
+            localStorage.setItem("roomId", data.id);
+            socket.emit("refreshQueue", data);
+        })
     );
 
     join$.subscribe();
@@ -285,7 +400,13 @@ chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
                     mutation.target.textContent,
                     document.querySelector(artist)?.textContent,
                 ].join(" - ");
-                socket.emit("change", title);
+                socket.emit("change", {
+                    title,
+                    videoId: new URL(window.location.href).searchParams.get(
+                        "v"
+                    ),
+                    roomId: ROOM_ID,
+                });
             }
         });
     });
@@ -303,6 +424,7 @@ chrome.storage.local.get(["partyUrl", "roomId"] as Storage[], (result) => {
     });
 
     socket.on("play", (data: Queue) => {
+        console.log(data);
         play(data);
     });
 

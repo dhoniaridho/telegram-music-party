@@ -17,6 +17,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.0.14
         version: 4.0.14(vite@6.2.2(jiti@2.4.2)(lightningcss@1.29.2)(yaml@2.7.0))
+      '@thumbmarkjs/thumbmarkjs':
+        specifier: ^0.19.1
+        version: 0.19.1
       autoprefixer:
         specifier: ^10.4.21
         version: 10.4.21(postcss@8.5.3)
@@ -1711,6 +1714,9 @@ packages:
 
   '@tanstack/virtual-core@3.11.3':
     resolution: {integrity: sha512-v2mrNSnMwnPJtcVqNvV0c5roGCBqeogN8jDtgtuHCphdwBasOZ17x8UV8qpHUh+u0MLfX43c0uUHKje0s+Zb0w==}
+
+  '@thumbmarkjs/thumbmarkjs@0.19.1':
+    resolution: {integrity: sha512-HovgxR/UhMIdzUVSQBZXqVvc563VrkToKjVCM49/dDMA7XNBbsNGmSSyYVZFKVrgYB0yb6MlW92raUJbactp8A==}
 
   '@types/chrome@0.0.309':
     resolution: {integrity: sha512-ZFADzcp8b+roUrux68U8pti4cmNOLJXWkShk8lfxj9SBcjYqpJt7NypBprSJUJDJVakGZgd2Tt00QePIGh7oPA==}
@@ -5345,6 +5351,8 @@ snapshots:
       react-dom: 19.0.0(react@19.0.0)
 
   '@tanstack/virtual-core@3.11.3': {}
+
+  '@thumbmarkjs/thumbmarkjs@0.19.1': {}
 
   '@types/chrome@0.0.309':
     dependencies:

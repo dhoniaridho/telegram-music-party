@@ -1,7 +1,17 @@
-import { Subject, Observable, from, tap, switchMap } from "rxjs";
+import {
+    Subject,
+    Observable,
+    from,
+    tap,
+    switchMap,
+    firstValueFrom,
+} from "rxjs";
 import { io } from "socket.io-client";
 import { detect } from "detect-browser";
 import axios from "axios";
+import { getFingerprint } from "@thumbmarkjs/thumbmarkjs";
+
+const fp$ = from(getFingerprint());
 
 Object.defineProperty(window, "onbeforeunload", {
     get: () => null,
@@ -387,6 +397,14 @@ chrome.storage.local.get(
                     }
                 );
             }),
+            switchMap(async (data) => {
+                const fp = await firstValueFrom(fp$);
+
+                return {
+                    ...data,
+                    fingerprint: fp,
+                };
+            }),
             tap(async (data) => {
                 console.log(data);
                 console.log(result.joined);
@@ -397,6 +415,18 @@ chrome.storage.local.get(
                 socket.emit("join", data);
             })
         );
+
+        chrome.storage.local.onChanged.addListener(async (changes) => {
+            console.log(changes.roomId);
+            const fp = await firstValueFrom(fp$);
+            if (!changes.roomId.newValue) {
+                socket.emit("leave", {
+                    id: changes.roomId.oldValue,
+                    fingerprint: fp,
+                });
+                console.log('Leaving room');
+            }
+        });
 
         const playbackObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation, i) => {

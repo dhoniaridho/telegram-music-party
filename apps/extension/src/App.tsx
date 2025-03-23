@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { addToast, Button, Input, Switch } from "@heroui/react";
+import { Suspense, useEffect, useState } from "react";
+import { addToast, Button, Input, Spinner, Switch } from "@heroui/react";
 import { firstValueFrom, from, map, of, switchMap } from "rxjs";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -23,6 +23,27 @@ function App() {
     };
 
     const [partyUrl, setPartyUrl] = useState("");
+
+    const getConfig = async () => {
+        return new Promise<{ roomId: string; partyUrl: string }>((res) => {
+            return chrome.storage?.local?.get<{
+                roomId: string;
+                partyUrl: string;
+            }>(["roomId", "partyUrl"], (result) => {
+                res(result);
+            });
+        });
+    };
+
+    const [roomId, setRoomId] = useState("");
+
+    useEffect(() => {
+        (async () => {
+            const result = await getConfig();
+            setRoomId(result.roomId);
+            setPartyUrl(result.partyUrl);
+        })();
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -52,6 +73,14 @@ function App() {
         })();
     }, []);
 
+    const onLeaveRoom = async () => {
+        await chrome.storage.local.remove("roomId");
+        setRoomId("");
+        addToast({
+            title: "Successfully Left Room",
+        });
+    };
+
     return (
         <main className="bg-slate-200 min-w-[400px] min-h-[400px]">
             <div className="flex justify-center items-center w-full min-h-screen">
@@ -60,48 +89,84 @@ function App() {
                         className="w-full flex justify-center gap-3 flex-col"
                         onSubmit={handleSubmit}
                     >
-                        <div>
-                            <h1 className="text-2xl font-bold">Party Config</h1>
-                        </div>
-
-                        <Input
-                            name="roomId"
-                            label="Room Id"
-                            defaultValue={partyUrl}
-                            placeholder="Room Id"
-                        />
-
-                        <Switch
-                            size="sm"
-                            onChange={(e) => setSelfHosted(e.target.checked)}
+                        <Suspense
+                            fallback={
+                                <div className="flex flex-col justify-center items-center">
+                                    <Spinner />
+                                    <div>Still doing stuff</div>
+                                </div>
+                            }
                         >
-                            Self Hosted
-                        </Switch>
-                        <AnimatePresence>
-                            {selfHosted && (
-                                <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: "100%", opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                >
-                                    <Input
-                                        color="success"
-                                        name="partyUrl"
-                                        label="Party Url"
-                                        defaultValue={partyUrl}
-                                        placeholder="https://party.dhoniaridho.com"
-                                    />
-                                </motion.div>
+                            {roomId && (
+                                <>
+                                    <p className="text-center font-bold">
+                                        Joined Room: <br />{" "}
+                                        <div className="text-xl">{roomId}</div>
+                                    </p>
+                                    <Button
+                                        color="danger"
+                                        onPress={onLeaveRoom}
+                                    >
+                                        Leave Room
+                                    </Button>
+                                </>
                             )}
-                        </AnimatePresence>
-                        <Button
-                            size="sm"
-                            type="submit"
-                            color="primary"
-                            className="w-full"
-                        >
-                            Submit
-                        </Button>
+                            {!roomId && (
+                                <>
+                                    <div>
+                                        <h1 className="text-2xl font-bold">
+                                            Party Config
+                                        </h1>
+                                    </div>
+
+                                    <Input
+                                        name="roomId"
+                                        label="Room Id"
+                                        defaultValue={roomId}
+                                        placeholder="Room Id"
+                                    />
+
+                                    <Switch
+                                        size="sm"
+                                        onChange={(e) =>
+                                            setSelfHosted(e.target.checked)
+                                        }
+                                    >
+                                        Self Hosted
+                                    </Switch>
+                                    <AnimatePresence>
+                                        {selfHosted && (
+                                            <motion.div
+                                                initial={{
+                                                    height: 0,
+                                                    opacity: 0,
+                                                }}
+                                                animate={{
+                                                    height: "100%",
+                                                    opacity: 1,
+                                                }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                            >
+                                                <Input
+                                                    name="partyUrl"
+                                                    label="Party Url"
+                                                    defaultValue={partyUrl}
+                                                    placeholder="https://party.dhoniaridho.com"
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                    <Button
+                                        size="sm"
+                                        type="submit"
+                                        color="primary"
+                                        className="w-full"
+                                    >
+                                        Submit
+                                    </Button>
+                                </>
+                            )}
+                        </Suspense>
                     </form>
                 </div>
             </div>

@@ -258,17 +258,16 @@ chrome.storage.local.get(
             queues = data;
         });
 
-        const VIDEO_SELECTOR =
-            "#movie_player > div.html5-video-container > video";
-
-        let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-
         const endedPayload = {
             roomId: ROOM_ID,
             lastVideoId: "",
         };
 
         setInterval(() => {
+            const VIDEO_SELECTOR =
+                "#movie_player > div.html5-video-container > video";
+
+            let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
             if (!el) return;
 
             el.ontimeupdate = () => {
@@ -296,6 +295,11 @@ chrome.storage.local.get(
                 });
             };
         }, 2000);
+
+        const VIDEO_SELECTOR =
+            "#movie_player > div.html5-video-container > video";
+
+        let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
 
         if (el) {
             el.ontimeupdate = () => {

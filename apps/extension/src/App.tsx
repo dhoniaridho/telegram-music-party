@@ -50,7 +50,7 @@ function App() {
     return (
         <main className="bg-slate-800 min-w-[400px] min-h-[400px]">
             <div className="flex justify-center items-center w-full min-h-screen">
-                <div className="flex flex-col gap-5 justify-center items-center">
+                <div className="flex flex-col gap-5 justify-center items-center w-full max-w-xl px-5">
                     <form
                         className="w-full flex items-center justify-center gap-3 flex-col"
                         onSubmit={handleSubmit}

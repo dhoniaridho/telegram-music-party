@@ -7,7 +7,7 @@ function App() {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
         await chrome.storage.local.set({
-            partyUrl: data.get("partyUrl"),
+            partyUrl: data.get("partyUrl") || "https://party.dhoniaridho.com",
             roomId: data.get("roomId"),
         });
 
@@ -23,28 +23,31 @@ function App() {
     const [partyUrl, setPartyUrl] = useState("");
 
     useEffect(() => {
-        firstValueFrom(
-            from(chrome.storage?.local?.get("partyUrl") || of()).pipe(
-                map((v) => v.partyUrl as string),
-                switchMap(async (v) => {
-                    if (!v) {
-                        const defaultValue = "https://party.dhoniaridho.com";
-                        return defaultValue;
-                    }
-                    setPartyUrl(v);
-                    return v;
-                }),
-                switchMap(async (v) => {
-                    console.log(v);
-                    await chrome.storage.local.set({
-                        partyUrl: v,
-                    });
+        (async () => {
+            await firstValueFrom(
+                from(chrome.storage?.local?.get("partyUrl") || of()).pipe(
+                    map((v) => v.partyUrl as string),
+                    switchMap(async (v) => {
+                        if (!v) {
+                            const defaultValue =
+                                "https://party.dhoniaridho.com";
+                            return defaultValue;
+                        }
+                        setPartyUrl(v);
+                        return v;
+                    }),
+                    switchMap(async (v) => {
+                        console.log(v);
+                        await chrome.storage.local.set({
+                            partyUrl: v,
+                        });
 
-                    setPartyUrl(v);
-                    return v;
-                })
-            )
-        );
+                        setPartyUrl(v);
+                        return v;
+                    })
+                )
+            );
+        })();
     }, []);
 
     return (

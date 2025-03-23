@@ -3,7 +3,7 @@
     "name": "YouTube Music Party",
     "version": "1.0",
     "description": "Control YouTube playback from a popup or keyboard shortcuts.",
-    "permissions": ["activeTab", "scripting", "tabs", "storage", "gcm", "identity", "management", "webNavigation"],
+    "permissions": ["activeTab", "scripting", "tabs", "storage"],
     "host_permissions": ["https://music.youtube.com/*"],
     "action": {
         "default_popup": "index.html"
@@ -16,7 +16,7 @@
     ],
     "browser_specific_settings": {
         "gecko": {
-            "id": "party@dhoniaridho.com",
+            "id": "telegram-music-party@dhoniaridho.com",
             "strict_min_version": "58.0"
         }
     }

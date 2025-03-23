@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { addToast, Button, Input } from "@heroui/react";
+import { addToast, Button, Input, Switch } from "@heroui/react";
 import { firstValueFrom, from, map, of, switchMap } from "rxjs";
+import { AnimatePresence, motion } from "framer-motion";
 
 function App() {
+    const [selfHosted, setSelfHosted] = useState(false);
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
@@ -51,25 +53,46 @@ function App() {
     }, []);
 
     return (
-        <main className="bg-slate-800 min-w-[400px] min-h-[400px]">
+        <main className="bg-slate-200 min-w-[400px] min-h-[400px]">
             <div className="flex justify-center items-center w-full min-h-screen">
                 <div className="flex flex-col gap-5 justify-center items-center w-full max-w-xl px-5">
                     <form
-                        className="w-full flex items-center justify-center gap-3 flex-col"
+                        className="w-full flex justify-center gap-3 flex-col"
                         onSubmit={handleSubmit}
                     >
-                        <Input
-                            name="partyUrl"
-                            label="Party Url"
-                            defaultValue={partyUrl}
-                            placeholder="http://localhost:3000"
-                        />
+                        <div>
+                            <h1 className="text-2xl font-bold">Party Config</h1>
+                        </div>
+
                         <Input
                             name="roomId"
                             label="Room Id"
                             defaultValue={partyUrl}
                             placeholder="Room Id"
                         />
+
+                        <Switch
+                            size="sm"
+                            onChange={(e) => setSelfHosted(e.target.checked)}
+                        >
+                            Self Hosted
+                        </Switch>
+                        <AnimatePresence>
+                            {selfHosted && (
+                                <motion.div 
+                                    initial={{ opacity: 0 }}
+                                    
+                                >
+                                    <Input
+                                        color="success"
+                                        name="partyUrl"
+                                        label="Party Url"
+                                        defaultValue={partyUrl}
+                                        placeholder="https://party.dhoniaridho.com"
+                                    />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                         <Button
                             size="sm"
                             type="submit"

@@ -24,8 +24,10 @@ export class PlaybackTelegramController {
         await ctx.reply('Welcome');
     }
 
-    @Command('join')
-    async join(@Ctx() ctx: Context & { message: { chat: { title: string } } }) {
+    @Command('register')
+    async register(
+        @Ctx() ctx: Context & { message: { chat: { title: string } } },
+    ) {
         const chatId = ctx.chat?.id.toString() || '';
         if (!chatId) {
             await ctx.reply('No chat id');
@@ -36,7 +38,7 @@ export class PlaybackTelegramController {
         const room = await this.playbackService.getRoomByChatId(chatId);
         if (room) {
             await ctx.reply(
-                `<code>${room.id}</code> already exists for this chat`,
+                `This chat is already registered. \nHere is the Room ID: \n\n<pre><code class="language-sh">${room.id}</code></pre>`,
                 {
                     parse_mode: 'HTML',
                 },
@@ -50,17 +52,20 @@ export class PlaybackTelegramController {
             colorsCount: 0,
             nounsCount: 2,
             joinWith: '-',
-        });
+        }) as string;
 
         await this.playbackService.addRoom(
-            roomId as string,
+            roomId,
             chatId,
             ctx.message?.chat.title || '',
         );
 
-        await ctx.reply(`<code>${(roomId as string) || 'No chat id'}</code>`, {
-            parse_mode: 'HTML',
-        });
+        await ctx.reply(
+            `Successfully registered! \nRoom ID: \n\n<pre><code class="language-sh">${roomId}</code></pre>`,
+            {
+                parse_mode: 'HTML',
+            },
+        );
     }
 
     @Command('play')

@@ -109,12 +109,26 @@ export class PlaybackGateway {
             return;
         }
 
-        await this.playbackService.sendMessage(
-            room.chatId,
-            `${data.browser} joined`,
+        // check device is already joined
+        const device = await this.playbackService.getRoomDevice(
+            room.id,
+            data.fingerprint,
         );
 
-        this.wss.emit('joined', room);
+        if (!device) {
+            // add device
+            await this.playbackService.addDevice(
+                room.id,
+                data.fingerprint,
+                data.browser,
+            );
+
+            // send message
+            await this.playbackService.sendMessage(
+                room.chatId,
+                `${data.browser} joined`,
+            );
+        }
 
         // get queues
         const queues = await this.playbackService.getQueues(room.id);
@@ -141,6 +155,32 @@ export class PlaybackGateway {
         this.wss.to(room.id).emit('queues', queues);
 
         void socket.join(room.id);
+    }
+
+    @SubscribeMessage('leave')
+    async onLeave(
+        @ConnectedSocket() socket: Socket,
+        @MessageBody() data: { roomId: string; fingerprint: string },
+    ) {
+        console.log('Leaving', data);
+
+        // get device
+        const device = await this.playbackService.getRoomDevice(
+            data.roomId,
+            data.fingerprint,
+        );
+
+        if (!device) {
+            console.log('Device not found');
+            return;
+        }
+
+        await this.playbackService.sendMessage(
+            device.room.chatId,
+            `${device.name} leaved`,
+        );
+
+        void socket.leave(data.roomId);
     }
 
     @SubscribeMessage('change')

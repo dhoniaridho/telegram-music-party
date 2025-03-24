@@ -12,7 +12,10 @@ export class YTMusicService implements OnModuleInit {
         // @ts-expect-errors
         this.ytm = new YTMusic();
 
-        await this.ytm.initialize();
+        await this.ytm.initialize({
+            HL: 'en',
+            GL: 'ID',
+        });
     }
 
     searchSongs = async (keyword: string): Promise<SongDetailed[]> => {

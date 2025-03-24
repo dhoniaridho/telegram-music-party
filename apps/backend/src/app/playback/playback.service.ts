@@ -76,8 +76,11 @@ export class PlaybackService {
         });
     }
 
-    async getNext() {
+    async getNext(roomId: string) {
         const nextItem = await this.prisma.queue.findFirst({
+            where: {
+                roomId,
+            },
             orderBy: {
                 createdAt: 'asc',
             },
@@ -129,6 +132,26 @@ export class PlaybackService {
         return this.prisma.room.findFirst({
             where: {
                 chatId,
+            },
+        });
+    }
+
+    async removeRoom(roomId: string) {
+        await this.prisma.device.deleteMany({
+            where: {
+                roomId,
+            },
+        });
+
+        await this.prisma.queue.deleteMany({
+            where: {
+                roomId,
+            },
+        });
+
+        await this.prisma.room.delete({
+            where: {
+                id: roomId,
             },
         });
     }

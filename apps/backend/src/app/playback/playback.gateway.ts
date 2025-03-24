@@ -55,6 +55,11 @@ export class PlaybackGateway {
         this.wss.to(roomID).emit('queues', queues);
     }
 
+    leave(roomID: string) {
+        // emit leave
+        this.wss.to(roomID).emit('leave');
+    }
+
     @SubscribeMessage('ended')
     async onEnd(@MessageBody() data: { roomId: string; lastVideoId: string }) {
         console.log('Player ended', data.roomId, data.lastVideoId);

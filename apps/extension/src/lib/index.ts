@@ -273,6 +273,11 @@ chrome.storage.local.get(
             lastVideoId: "",
         };
 
+        socket.on("leave", async () => {
+            await chrome.storage.local.remove("roomId");
+            window.location.reload();
+        });
+
         setInterval(() => {
             const VIDEO_SELECTOR =
                 "#movie_player > div.html5-video-container > video";
@@ -412,7 +417,9 @@ chrome.storage.local.get(
                 //     socket.emit("refreshQueue", data);
                 //     return;
                 // }
-                socket.emit("join", data);
+                if (data.id) {
+                    socket.emit("join", data);
+                }
             })
         );
 
@@ -424,7 +431,7 @@ chrome.storage.local.get(
                     id: changes.roomId.oldValue,
                     fingerprint: fp,
                 });
-                console.log('Leaving room');
+                console.log("Leaving room");
             }
         });
 

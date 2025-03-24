@@ -130,7 +130,7 @@ export class PlaybackTelegramController {
 
         const roomId = room.id;
         await this.playbackService.removeLastPlayed(roomId);
-        const next = await this.playbackService.getNext();
+        const next = await this.playbackService.getNext(roomId);
 
         this.gateway.nextCommand(roomId, next);
         await ctx.reply('Next');
@@ -191,6 +191,29 @@ export class PlaybackTelegramController {
         const roomId = room.id;
         this.gateway.volumeDown(roomId);
         await ctx.reply('Volume Down');
+    }
+
+    @Command('unregister')
+    async unregister(@Ctx() ctx: Context) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        // remove room
+        await this.playbackService.removeRoom(room.id);
+
+        // emit leave
+        this.gateway.leave(room.id);
+
+        await ctx.reply('Leaved. Bye!');
     }
 
     @On('inline_query')

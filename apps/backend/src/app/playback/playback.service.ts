@@ -103,6 +103,28 @@ export class PlaybackService {
         });
     }
 
+    async getRoomDevice(roomId: string, fingerprint: string) {
+        return this.prisma.device.findFirst({
+            where: {
+                roomId,
+                fingerprint,
+            },
+            include: {
+                room: true,
+            },
+        });
+    }
+
+    async addDevice(roomId: string, fingerprint: string, name: string) {
+        await this.prisma.device.create({
+            data: {
+                roomId,
+                name,
+                fingerprint,
+            },
+        });
+    }
+
     async getRoomByChatId(chatId: string) {
         return this.prisma.room.findFirst({
             where: {

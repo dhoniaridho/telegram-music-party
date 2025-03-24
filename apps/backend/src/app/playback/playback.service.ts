@@ -156,6 +156,15 @@ export class PlaybackService {
         });
     }
 
+    async removeDevice(roomId: string, fingerprint: string) {
+        await this.prisma.device.deleteMany({
+            where: {
+                roomId,
+                fingerprint,
+            },
+        });
+    }
+
     async sendMessage(chatId: string, message: string) {
         await this.bot.telegram.sendMessage(chatId, message);
     }

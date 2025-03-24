@@ -103,7 +103,6 @@ export class PlaybackGateway {
 
     @SubscribeMessage('join')
     async onJoin(@ConnectedSocket() socket: Socket, @MessageBody() data: Join) {
-        console.log(data);
         console.log('Player join', data.id);
 
         // get room
@@ -185,7 +184,10 @@ export class PlaybackGateway {
             `${device.name} leaved`,
         );
 
-        void socket.leave(data.roomId);
+        // remove device
+        await this.playbackService.removeDevice(data.roomId, data.fingerprint);
+
+        // void socket.leave(data.roomId);
     }
 
     @SubscribeMessage('change')

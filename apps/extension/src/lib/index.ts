@@ -9,9 +9,13 @@ import {
 import { io } from "socket.io-client";
 import { detect } from "detect-browser";
 import axios from "axios";
-import { getFingerprint } from "@thumbmarkjs/thumbmarkjs";
+import { load } from "@fingerprintjs/fingerprintjs";
 
-const fp$ = from(getFingerprint());
+const fp$ = from(load({})).pipe(
+    switchMap(async (fp) => {
+        return (await fp.get()).visitorId;
+    })
+);
 
 Object.defineProperty(window, "onbeforeunload", {
     get: () => null,
@@ -381,22 +385,23 @@ chrome.storage.local.get(
                                     "#account-name"
                                 ) as HTMLDivElement;
 
-                                console.log(user);
                                 const browser = [
                                     user?.textContent,
-                                    info?.name,
+                                    (info?.name?.slice(0, 1).toUpperCase() ||
+                                        "") + (info?.name?.slice(1) || ""),
                                     info?.os,
                                 ]
                                     .filter(Boolean)
                                     .join(" ");
 
                                 resolve({
-                                    id: result.roomId,
-                                    browser: browser,
-                                    ip: res.data.ip_addr,
+                                    id: result.roomId || "",
+                                    browser: browser || "",
+                                    ip: res.data.ip_addr || "",
                                 });
                             }, 300);
                         } catch (error) {
+                            console.log(error);
                             reject(error);
                         }
                     }

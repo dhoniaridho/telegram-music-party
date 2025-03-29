@@ -12,5 +12,11 @@ export default defineConfig({
             name: "extension",
             fileName: () => `content.js`,
         },
+        minify: false,
+    },
+    esbuild: {
+        keepNames: true,
+        minifyIdentifiers: false,
+        minifySyntax: false,
     },
 });

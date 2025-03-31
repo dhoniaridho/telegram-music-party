@@ -21,7 +21,19 @@ export class PlaybackTelegramController {
 
     @Start()
     async start(@Ctx() ctx: Context) {
-        await ctx.reply('Welcome');
+        const instructions = [
+            'Create a room by typing /register',
+            'Open firefox',
+            'Download extension https://addons.mozilla.org/en-US/firefox/addon/yt-music-party/',
+            'Enable extension',
+            'Open Extension',
+            'Insert room id',
+            'Go to https://music.youtube.com',
+            'Add queue by mention @xmsc_bot followed by [music name] here',
+            'Then, run /play in the group chat to play the music from the queue',
+        ];
+
+        await ctx.reply(instructions.join('\n'));
     }
 
     @Command('register')

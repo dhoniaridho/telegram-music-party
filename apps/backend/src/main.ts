@@ -11,6 +11,7 @@ async function bootstrap() {
 
     // Set commands
     void bot.telegram.setMyCommands([
+        { command: 'start', description: 'Show instructions' },
         { command: 'register', description: 'Register chat to party' },
         { command: 'play', description: 'Play a music' },
         { command: 'pause', description: 'You know this' },

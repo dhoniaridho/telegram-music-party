@@ -23,6 +23,7 @@ export class PlaybackTelegramController {
     async start(@Ctx() ctx: Context) {
         const instructions = [
             'Create a room by typing /register',
+            'Copy the room id',
             'Open firefox',
             'Download extension https://addons.mozilla.org/en-US/firefox/addon/yt-music-party/',
             'Enable extension',

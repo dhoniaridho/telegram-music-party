@@ -193,6 +193,36 @@ export class PlaybackTelegramController {
         await ctx.reply('Volume Down');
     }
 
+    @Command('devices')
+    async devices(@Ctx() ctx: Context) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getDevicesByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        if (room.Device.length == 0) {
+            await ctx.reply('No devices found');
+            return;
+        }
+
+        await ctx.reply(
+            `<b>Devices:</b>\n\n${room.Device.map(
+                (d, i) =>
+                    `(${i + 1}) \n<b>Name</b> \n${d.name} \n<b>Browser Id</b> \n<code>${d.fingerprint}</code> \n<b>Joined At</b>\n${d.createdAt.toLocaleString()}\n\n`,
+            ).join('')}`,
+            {
+                parse_mode: 'HTML',
+            },
+        );
+    }
+
     @Command('unregister')
     async unregister(@Ctx() ctx: Context) {
         const chatId = ctx.chat?.id.toString() || '';

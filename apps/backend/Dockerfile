@@ -32,6 +32,7 @@ FROM node:23-alpine AS runtime
 
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY public /public
 
 COPY docker ./docker
 COPY prisma ./prisma

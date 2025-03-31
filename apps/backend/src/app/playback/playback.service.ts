@@ -136,6 +136,17 @@ export class PlaybackService {
         });
     }
 
+    async getDevicesByChatId(chatId: string) {
+        return this.prisma.room.findFirst({
+            where: {
+                chatId,
+            },
+            include: {
+                Device: true,
+            },
+        });
+    }
+
     async removeRoom(roomId: string) {
         await this.prisma.device.deleteMany({
             where: {

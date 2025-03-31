@@ -9,12 +9,30 @@ import { Queue } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { PlaybackService } from './playback.service';
 import { Join } from 'src/types/playback.type';
+import * as ffmpeg from 'fluent-ffmpeg';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class PlaybackGateway {
     constructor(private readonly playbackService: PlaybackService) {}
     @WebSocketServer() wss: Server;
+    private streamProcess: ffmpeg.FfmpegCommand;
 
+    stream(roomID: string) {
+        console.log(`Emitting 'stream' event to ${roomID}`);
+        const ffmpegCommand = ffmpeg(
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        ) // Replace with your music source
+            .format('mp3')
+            .audioBitrate(128)
+            .on('error', (err) => console.error('FFmpeg Error:', err));
+
+        this.streamProcess = ffmpegCommand;
+
+        const stream = ffmpegCommand.pipe();
+        stream.on('data', (chunk: Buffer) => {
+            this.wss.emit('audio-stream', chunk.toString('base64')); // Send base64 encoded audio
+        });
+    }
     // Function to emit events from the server
     playCommand(roomID: string, queue: Queue | null) {
         console.log(`Emitting 'play' event to ${roomID} ${queue?.title}`);

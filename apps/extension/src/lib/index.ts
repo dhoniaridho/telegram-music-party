@@ -14,7 +14,7 @@ import { load } from "@fingerprintjs/fingerprintjs";
 const fp$ = from(load({})).pipe(
     switchMap(async (fp) => {
         return (await fp.get()).visitorId;
-    })
+    }),
 );
 
 Object.defineProperty(window, "onbeforeunload", {
@@ -113,7 +113,7 @@ function simulateTyping(element: HTMLInputElement, text: string, delay = 100) {
             element.value += text[i]; // Append character
             element.dispatchEvent(new Event("input", { bubbles: true })); // Trigger input event
             element.dispatchEvent(
-                new KeyboardEvent("keydown", { key: text[i] })
+                new KeyboardEvent("keydown", { key: text[i] }),
             ); // Simulate keydown
             element.dispatchEvent(new KeyboardEvent("keyup", { key: text[i] })); // Simulate keyup
             i++;
@@ -128,7 +128,7 @@ function simulateTyping(element: HTMLInputElement, text: string, delay = 100) {
 
 export function search(q: string) {
     const el = document.querySelector(
-        ".ytmusic-search-box input"
+        ".ytmusic-search-box input",
     ) as HTMLInputElement;
     if (el) {
         simulateTyping(el, q, 100);
@@ -291,7 +291,7 @@ chrome.storage.local.get(
 
             el.ontimeupdate = () => {
                 endedPayload.lastVideoId = new URL(
-                    window.location.href
+                    window.location.href,
                 ).searchParams.get("v") as string;
                 el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
                 if (queues.length == 0) {
@@ -324,7 +324,7 @@ chrome.storage.local.get(
             el.ontimeupdate = () => {
                 el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
                 endedPayload.lastVideoId = new URL(
-                    window.location.href
+                    window.location.href,
                 ).searchParams.get("v") as string;
                 if (queues.length == 0) {
                     return;
@@ -354,7 +354,7 @@ chrome.storage.local.get(
                     "Content-Type": "application/json",
                     Accept: "application/json",
                 },
-            })
+            }),
         ).pipe(
             switchMap((res) => {
                 return new Promise<{ id: string; browser: string; ip: string }>(
@@ -362,14 +362,31 @@ chrome.storage.local.get(
                         try {
                             const info = detect();
 
-                            const accountButton = document.querySelector(
-                                '[aria-label="Open avatar menu"]'
-                            ) as HTMLButtonElement;
+                            const browser = [
+                                (info?.name?.slice(0, 1).toUpperCase() || "") +
+                                    (info?.name?.slice(1) || ""),
+                                info?.os, // Mac OS, Windows
+                            ]; // [Chrome, Mac OS]
+
+                            const accountButton: HTMLButtonElement | null =
+                                document.querySelector(
+                                    '[aria-label="Open avatar menu"]',
+                                );
+
+                            if (!accountButton) {
+                                resolve({
+                                    id: result.roomId || "",
+                                    browser:
+                                        browser.filter(Boolean).join(" ") || "",
+                                    ip: res.data.ip_addr || "",
+                                });
+                                return;
+                            }
 
                             accountButton.click();
 
                             const querySelector = document.querySelector(
-                                '[class="style-scope tp-yt-iron-dropdown"]'
+                                '[class="style-scope tp-yt-iron-dropdown"]',
                             ) as HTMLDivElement;
                             if (querySelector) {
                                 querySelector.style.display = "hidden";
@@ -381,22 +398,27 @@ chrome.storage.local.get(
 
                             setTimeout(() => {
                                 accountButton.click();
-                                const user = document.querySelector(
-                                    "#account-name"
-                                ) as HTMLDivElement;
+                                const user: HTMLDivElement | null =
+                                    document.querySelector("#account-name");
 
-                                const browser = [
-                                    user?.textContent,
-                                    (info?.name?.slice(0, 1).toUpperCase() ||
-                                        "") + (info?.name?.slice(1) || ""),
-                                    info?.os,
-                                ]
-                                    .filter(Boolean)
-                                    .join(" ");
+                                if (!user) {
+                                    resolve({
+                                        id: result.roomId || "",
+                                        browser:
+                                            browser.filter(Boolean).join(" ") ||
+                                            "",
+                                        ip: res.data.ip_addr || "",
+                                    });
+                                    return;
+                                }
+
+                                // add user to browser
+                                browser.unshift(user?.textContent);
 
                                 resolve({
                                     id: result.roomId || "",
-                                    browser: browser || "",
+                                    browser:
+                                        browser.filter(Boolean).join(" ") || "",
                                     ip: res.data.ip_addr || "",
                                 });
                             }, 300);
@@ -404,7 +426,7 @@ chrome.storage.local.get(
                             console.log(error);
                             reject(error);
                         }
-                    }
+                    },
                 );
             }),
             switchMap(async (data) => {
@@ -425,7 +447,7 @@ chrome.storage.local.get(
                 if (data.id) {
                     socket.emit("join", data);
                 }
-            })
+            }),
         );
 
         chrome.storage.local.onChanged.addListener(async (changes) => {
@@ -454,7 +476,7 @@ chrome.storage.local.get(
                     socket.emit("change", {
                         title,
                         videoId: new URL(window.location.href).searchParams.get(
-                            "v"
+                            "v",
                         ),
                         roomId: ROOM_ID,
                     });
@@ -463,7 +485,7 @@ chrome.storage.local.get(
         });
 
         const titleElement = document.querySelector(
-            ".title.ytmusic-player-bar"
+            ".title.ytmusic-player-bar",
         );
         if (titleElement) {
             playbackObserver.observe(titleElement, {
@@ -518,5 +540,5 @@ chrome.storage.local.get(
         socket.on("disconnect", () => {
             console.log("Disconnected from WebSocket server");
         });
-    }
+    },
 );

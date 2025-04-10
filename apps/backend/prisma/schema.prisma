@@ -20,9 +20,10 @@ model Room {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    Queue  Queue[]
-    Device Device[]
-    Vote   Vote[]
+    Queue   Queue[]
+    Device  Device[]
+    Vote    Vote[]
+    Feature Feature?
 }
 
 model Device {
@@ -52,4 +53,20 @@ model Vote {
     userId    String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+}
+
+model Feature {
+    id                String   @id @default(uuid())
+    roomId            String   @unique
+    room              Room     @relation(fields: [roomId], references: [id])
+    minimumVotes      Int      @default(5)
+    nextCommand       Boolean  @default(false)
+    nextOnlyAdmin     Boolean  @default(true)
+    previousCommand   Boolean  @default(false)
+    previousOnlyAdmin Boolean  @default(true)
+    muteCommand       Boolean  @default(true)
+    unmuteCommand     Boolean  @default(true)
+    volumeCommand     Boolean  @default(false)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
 }

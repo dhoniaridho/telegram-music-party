@@ -94,6 +94,12 @@ export class PlaybackService {
                 id: roomID,
                 chatId,
                 name,
+                Feature: {
+                    create: {},
+                },
+            },
+            include: {
+                Feature: true,
             },
         });
     }
@@ -133,6 +139,9 @@ export class PlaybackService {
             where: {
                 chatId,
             },
+            include: {
+                Feature: true,
+            },
         });
     }
 
@@ -144,6 +153,7 @@ export class PlaybackService {
             include: {
                 Device: true,
                 Vote: true,
+                Feature: true,
             },
         });
     }
@@ -156,6 +166,12 @@ export class PlaybackService {
         });
 
         await this.prisma.queue.deleteMany({
+            where: {
+                roomId,
+            },
+        });
+
+        await this.prisma.feature.deleteMany({
             where: {
                 roomId,
             },
@@ -205,6 +221,8 @@ export class PlaybackService {
     }
 
     async sendMessage(chatId: string, message: string) {
-        await this.bot.telegram.sendMessage(chatId, message);
+        await this.bot.telegram.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+        });
     }
 }

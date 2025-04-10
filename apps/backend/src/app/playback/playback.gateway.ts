@@ -55,10 +55,6 @@ export class PlaybackGateway {
         this.wss.to(roomID).emit('prev');
     }
 
-    resumeCommand(roomID: string) {
-        this.wss.to(roomID).emit('resume');
-    }
-
     volumeUp(roomID: string) {
         console.log(`Emitting 'volumeUp' event to ${roomID}`);
         this.wss.to(roomID).emit('volumeUp');

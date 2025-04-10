@@ -51,10 +51,8 @@ export class PlaybackTelegramController {
             return;
         }
 
-        // only admins can register
+        // only admins can register & unregister
         const userId = ctx.from?.id || 0;
-        console.log('from', ctx.from);
-        console.log(await ctx.getChatMember(userId));
         const chatMember = await ctx.getChatMember(userId);
         const isAdmin = ['administrator', 'creator'].includes(
             chatMember?.status,
@@ -118,10 +116,6 @@ export class PlaybackTelegramController {
 
         // emit play command
         this.gateway.playCommand(roomId);
-
-        // this.gateway.playCommand(roomId, queue);
-
-        // await ctx.reply(`${queue.title} is now playing`);
     }
 
     @Command('pause')
@@ -316,6 +310,19 @@ export class PlaybackTelegramController {
             return;
         }
 
+        // only admins can register & unregister
+        const userId = ctx.from?.id || 0;
+        const chatMember = await ctx.getChatMember(userId);
+        const isAdmin = ['administrator', 'creator'].includes(
+            chatMember?.status,
+        );
+        if (!isAdmin) {
+            await ctx.reply(
+                'Only admins can unregister the bot. Please contact an admin to unregister.',
+            );
+            return;
+        }
+
         // remove room
         await this.playbackService.removeRoom(room.id);
 
@@ -445,7 +452,15 @@ export class PlaybackTelegramController {
             undefined,
             undefined,
             messageInlineID,
-            `${songCombined} added to queue`,
+            `➕ ${songCombined
+                .split(' - ')
+                .map((v, k) => {
+                    if (k === 0) {
+                        return `<i>${v}</i>`;
+                    }
+                    return v;
+                })
+                .join(' - ')} added to the queue.`,
         );
     }
 
@@ -549,24 +564,5 @@ export class PlaybackTelegramController {
                 parse_mode: 'HTML',
             },
         );
-    }
-
-    @Command('resume')
-    async resume(@Ctx() ctx: Context) {
-        const chatId = ctx.chat?.id.toString() || '';
-        if (!chatId) {
-            await ctx.reply('No chat id');
-            return;
-        }
-
-        const room = await this.playbackService.getRoomByChatId(chatId);
-        if (!room) {
-            await ctx.reply('No room found');
-            return;
-        }
-
-        const roomId = room.id;
-        this.gateway.resumeCommand(roomId);
-        await ctx.reply('Resuming');
     }
 }

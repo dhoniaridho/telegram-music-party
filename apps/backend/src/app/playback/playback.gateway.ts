@@ -65,6 +65,21 @@ export class PlaybackGateway {
         this.wss.to(roomID).emit('volumeDown');
     }
 
+    muteCommand(roomID: string) {
+        console.log(`Emitting 'mute' event to ${roomID}`);
+        this.wss.to(roomID).emit('mute');
+    }
+
+    unmuteCommand(roomID: string) {
+        console.log(`Emitting 'unmute' event to ${roomID}`);
+        this.wss.to(roomID).emit('unmute');
+    }
+
+    lyricsCommand(roomID: string) {
+        console.log(`Emitting 'lyrics' event to ${roomID}`);
+        this.wss.to(roomID).emit('lyrics');
+    }
+
     updateQueue(roomID: string, queues: Queue[]) {
         // emit new queue
         this.wss.to(roomID).emit('queues', queues);
@@ -77,13 +92,11 @@ export class PlaybackGateway {
 
     @SubscribeMessage('join')
     async onJoin(@ConnectedSocket() socket: Socket, @MessageBody() data: Join) {
-        console.log('Player join', data.id);
-
         // get room
         const room = await this.playbackService.getRoom(data.id);
 
         if (!room) {
-            console.log('Room not found');
+            console.log('join: room not found');
             return;
         }
 
@@ -113,6 +126,8 @@ export class PlaybackGateway {
         this.wss.emit('queues', queues);
 
         void socket.join(room.id);
+
+        console.log('player join', data.id);
     }
 
     @SubscribeMessage('refreshQueue')

@@ -16,7 +16,7 @@ async function bootstrap() {
         { command: 'play', description: 'Play a music' },
         { command: 'pause', description: 'You know this' },
         { command: 'devices', description: 'List all device joined' },
-        // { command: 'vote_next', description: 'Voting to play next' },
+        { command: 'vote_next', description: 'Voting to play next' },
         { command: 'queue', description: 'Queue list' },
         // { command: 'info', description: 'Get info current playing' },
         // { command: 'lyrics', description: 'Get lyrics from current playing' },

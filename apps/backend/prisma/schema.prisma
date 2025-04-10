@@ -22,6 +22,7 @@ model Room {
 
     Queue  Queue[]
     Device Device[]
+    Vote   Vote[]
 }
 
 model Device {
@@ -42,4 +43,13 @@ model Queue {
     url       String
     createdAt DateTime? @default(now())
     updatedAt DateTime  @updatedAt
+}
+
+model Vote {
+    id        String   @id @default(uuid())
+    roomId    String
+    room      Room     @relation(fields: [roomId], references: [id])
+    userId    String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }

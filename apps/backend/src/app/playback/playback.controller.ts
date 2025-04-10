@@ -39,11 +39,28 @@ export class PlaybackTelegramController {
 
     @Command('register')
     async register(
-        @Ctx() ctx: Context & { message: { chat: { title: string } } },
+        @Ctx()
+        ctx: Context & {
+            chat: { members_count?: number };
+            message: { chat: { title: string } };
+        },
     ) {
         const chatId = ctx.chat?.id.toString() || '';
         if (!chatId) {
             await ctx.reply('No chat id');
+            return;
+        }
+
+        // only admins can register & unregister
+        const userId = ctx.from?.id || 0;
+        const chatMember = await ctx.getChatMember(userId);
+        const isAdmin = ['administrator', 'creator'].includes(
+            chatMember?.status,
+        );
+        if (!isAdmin) {
+            await ctx.reply(
+                'Only admins can register the bot. Please contact an admin to register.',
+            );
             return;
         }
 
@@ -97,15 +114,8 @@ export class PlaybackTelegramController {
 
         const roomId = room.id;
 
-        const queue = await this.playbackService.getQueue(roomId);
-        if (!queue) {
-            await ctx.reply('Empty queue');
-            return;
-        }
-
-        this.gateway.playCommand(roomId, queue);
-
-        await ctx.reply(`${queue.title} is now playing`);
+        // emit play command
+        this.gateway.playCommand(roomId);
     }
 
     @Command('pause')
@@ -124,7 +134,7 @@ export class PlaybackTelegramController {
 
         const roomId = room.id;
         this.gateway.pauseCommand(roomId);
-        await ctx.reply('Paused');
+        // await ctx.reply('Paused');
     }
 
     @Command('next')
@@ -141,12 +151,11 @@ export class PlaybackTelegramController {
             return;
         }
 
-        const roomId = room.id;
-        await this.playbackService.removeLastPlayed(roomId);
-        const next = await this.playbackService.getNext(roomId);
+        // disabled feature
+        await ctx.reply('⚠️ This feature is currently disabled.');
+        return;
 
-        this.gateway.nextCommand(roomId, next);
-        await ctx.reply('Next');
+        // this.gateway.nextCommand(room.id);
     }
 
     @Command('prev')
@@ -163,9 +172,11 @@ export class PlaybackTelegramController {
             return;
         }
 
-        const roomId = room.id;
-        this.gateway.previousCommand(roomId);
-        await ctx.reply('Previous');
+        // disabled feature
+        await ctx.reply('⚠️ This feature is currently disabled.');
+        return;
+
+        // this.gateway.previousCommand(room.id);
     }
 
     @Command('volumeUp')
@@ -236,6 +247,55 @@ export class PlaybackTelegramController {
         );
     }
 
+    @Command('vote_next')
+    async vote_next(@Ctx() ctx: Context) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getDevicesByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        // check already voted
+        const userId = ctx.from?.id.toString() || '';
+        const alreadyVoted = room.Vote.find((v) => v.userId === userId);
+        if (alreadyVoted) {
+            await ctx.reply(
+                `Nice try, DJ—but you've already voted! Let's see what the others pick 🎧`,
+            );
+            return;
+        }
+
+        const MINIMUM_VOTE = 5;
+
+        // if will be last voter reach minimum vote
+        if (room.Vote.length + 1 >= MINIMUM_VOTE) {
+            // emit next command
+            this.gateway.nextCommand(room.id);
+
+            await ctx.reply(
+                [
+                    '🗳️ The people have spoken.',
+                    'Minimum votes reached, and the next song has been chosen. Let the music play!',
+                ].join('\n'),
+            );
+            return;
+        }
+
+        // add vote
+        await this.playbackService.addVote(room.id, userId);
+
+        // send message
+        await ctx.reply(
+            `We're at ${room.Vote.length + 1}/${MINIMUM_VOTE} votes for the next track—who's holding us up? 😄`,
+        );
+    }
+
     @Command('unregister')
     async unregister(@Ctx() ctx: Context) {
         const chatId = ctx.chat?.id.toString() || '';
@@ -247,6 +307,19 @@ export class PlaybackTelegramController {
         const room = await this.playbackService.getRoomByChatId(chatId);
         if (!room) {
             await ctx.reply('No room found');
+            return;
+        }
+
+        // only admins can register & unregister
+        const userId = ctx.from?.id || 0;
+        const chatMember = await ctx.getChatMember(userId);
+        const isAdmin = ['administrator', 'creator'].includes(
+            chatMember?.status,
+        );
+        if (!isAdmin) {
+            await ctx.reply(
+                'Only admins can unregister the bot. Please contact an admin to unregister.',
+            );
             return;
         }
 
@@ -356,7 +429,7 @@ export class PlaybackTelegramController {
                 undefined,
                 undefined,
                 messageInlineID,
-                'Music Party not available in this chat',
+                `🚫 No party here—Music Party isn't available in this chat`,
             );
             return;
         }
@@ -379,7 +452,15 @@ export class PlaybackTelegramController {
             undefined,
             undefined,
             messageInlineID,
-            `${songCombined} added to queue`,
+            `➕ ${songCombined
+                .split(' - ')
+                .map((v, k) => {
+                    if (k === 0) {
+                        return `<i>${v}</i>`;
+                    }
+                    return v;
+                })
+                .join(' - ')} added to the queue.`,
         );
     }
 
@@ -449,27 +530,39 @@ export class PlaybackTelegramController {
 
         const roomId = room.id;
         const data = await this.playbackService.getQueues(roomId);
+
+        // check if queue is empty
+        if (!data || data.length === 0) {
+            await ctx.reply(
+                [
+                    '🚫 No tracks in the queue right now.',
+                    `Don't worry—auto-queue will kick in if something's already playing.`,
+                ].join('\n'),
+            );
+            return;
+        }
+
         await ctx.reply(
-            `Queue: \n${data.map((d, i) => `${i + 1}. ${d.title}`).join('\n')}`,
+            [
+                `🎧 Current Queue:`,
+                `${data
+                    .map(
+                        (d, i) =>
+                            `${i + 1}. "${d.title
+                                .split(' - ')
+                                .map((v, i) => {
+                                    if (i === 0) {
+                                        return `<i>${v}</i>`;
+                                    }
+                                    return v;
+                                })
+                                .join(' - ')}"`,
+                    )
+                    .join('\n')}`,
+            ].join('\n'),
+            {
+                parse_mode: 'HTML',
+            },
         );
-    }
-
-    @Command('resume')
-    async resume(@Ctx() ctx: Context) {
-        const chatId = ctx.chat?.id.toString() || '';
-        if (!chatId) {
-            await ctx.reply('No chat id');
-            return;
-        }
-
-        const room = await this.playbackService.getRoomByChatId(chatId);
-        if (!room) {
-            await ctx.reply('No room found');
-            return;
-        }
-
-        const roomId = room.id;
-        this.gateway.resumeCommand(roomId);
-        await ctx.reply('Resuming');
     }
 }

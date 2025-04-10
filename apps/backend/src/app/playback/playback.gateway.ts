@@ -33,10 +33,11 @@ export class PlaybackGateway {
             this.wss.emit('audio-stream', chunk.toString('base64')); // Send base64 encoded audio
         });
     }
+
     // Function to emit events from the server
-    playCommand(roomID: string, queue: Queue | null) {
-        console.log(`Emitting 'play' event to ${roomID} ${queue?.title}`);
-        this.wss.to(roomID).emit('play', queue);
+    playCommand(roomID: string) {
+        console.log(`Emitting 'play' event to ${roomID}`);
+        this.wss.to(roomID).emit('play');
     }
 
     pauseCommand(roomID: string) {
@@ -44,18 +45,14 @@ export class PlaybackGateway {
         this.wss.to(roomID).emit('pause');
     }
 
-    nextCommand(roomID: string, queue?: Queue) {
+    nextCommand(roomID: string) {
         console.log(`Emitting 'next' event to ${roomID}`);
-        this.wss.to(roomID).emit('next', queue);
+        this.wss.to(roomID).emit('next');
     }
 
     previousCommand(roomID: string) {
         console.log(`Emitting 'prev' event to ${roomID}`);
         this.wss.to(roomID).emit('prev');
-    }
-
-    resumeCommand(roomID: string) {
-        this.wss.to(roomID).emit('resume');
     }
 
     volumeUp(roomID: string) {
@@ -76,47 +73,6 @@ export class PlaybackGateway {
     leave(roomID: string) {
         // emit leave
         this.wss.to(roomID).emit('leave');
-    }
-
-    @SubscribeMessage('ended')
-    async onEnd(@MessageBody() data: { roomId: string; lastVideoId: string }) {
-        console.log('Player ended', data.roomId, data.lastVideoId);
-
-        const queue = await this.playbackService.getQueue(data.roomId);
-
-        let nextQueue: Queue | null = null;
-
-        if (queue) {
-            if (queue.url === data.lastVideoId) {
-                // delete song
-                await this.playbackService.removeQueue(
-                    data.roomId,
-                    data.lastVideoId,
-                );
-
-                // emit new queues
-                this.updateQueue(
-                    data.roomId,
-                    await this.playbackService.getQueues(data.roomId),
-                );
-
-                // get next song
-                const newQueue = await this.playbackService.getQueue(
-                    data.roomId,
-                );
-                if (newQueue) {
-                    nextQueue = newQueue;
-                }
-            } else {
-                // set next song
-                nextQueue = queue;
-            }
-        }
-
-        this.playCommand(data.roomId, nextQueue);
-
-        // get song
-        console.log('next queue:', queue);
     }
 
     @SubscribeMessage('join')
@@ -208,11 +164,11 @@ export class PlaybackGateway {
         // void socket.leave(data.roomId);
     }
 
-    @SubscribeMessage('change')
-    async onPlaybackChanged(
-        @MessageBody() data: { roomId: string; videoId: string; title: string },
+    @SubscribeMessage('started')
+    async onStartedNewSong(
+        @MessageBody() data: { roomId: string; videoId: string },
     ) {
-        console.log('Playback changed', data);
+        console.log('Start new songs', data);
 
         // get room
         const room = await this.playbackService.getRoom(data.roomId);
@@ -222,9 +178,41 @@ export class PlaybackGateway {
             return;
         }
 
-        await this.playbackService.sendMessage(
-            room.chatId,
-            `${data.title} is now playing`,
-        );
+        // remove from queue
+        const queue = await this.playbackService.getQueue(data.roomId);
+
+        if (queue && queue.url === data.videoId) {
+            if (queue.url === data.videoId) {
+                // delete song
+                await this.playbackService.removeQueue(
+                    data.roomId,
+                    data.videoId,
+                );
+
+                // emit new queues
+                this.updateQueue(
+                    data.roomId,
+                    await this.playbackService.getQueues(data.roomId),
+                );
+            }
+        }
+
+        // clear votes
+        await this.playbackService.removeRoomVotes(data.roomId);
+    }
+
+    @SubscribeMessage('notify')
+    async onNotify(@MessageBody() data: { roomId: string; message: string }) {
+        console.log('Nofity', data);
+
+        // get room
+        const room = await this.playbackService.getRoom(data.roomId);
+
+        if (!room) {
+            console.log('Room not found');
+            return;
+        }
+
+        await this.playbackService.sendMessage(room.chatId, data.message);
     }
 }

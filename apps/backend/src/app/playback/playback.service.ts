@@ -143,6 +143,7 @@ export class PlaybackService {
             },
             include: {
                 Device: true,
+                Vote: true,
             },
         });
     }
@@ -172,6 +173,33 @@ export class PlaybackService {
             where: {
                 roomId,
                 fingerprint,
+            },
+        });
+    }
+
+    async addVote(roomId: string, userId: string) {
+        await this.prisma.vote.create({
+            data: {
+                roomId,
+                userId,
+            },
+        });
+    }
+
+    async countVotes(roomId: string) {
+        const count = await this.prisma.vote.count({
+            where: {
+                roomId,
+            },
+        });
+
+        return count;
+    }
+
+    async removeRoomVotes(roomId: string) {
+        await this.prisma.vote.deleteMany({
+            where: {
+                roomId,
             },
         });
     }

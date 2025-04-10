@@ -1,11 +1,4 @@
-import {
-    Subject,
-    Observable,
-    from,
-    tap,
-    switchMap,
-    firstValueFrom,
-} from "rxjs";
+import { from, tap, switchMap, firstValueFrom } from "rxjs";
 import { io } from "socket.io-client";
 import { detect } from "detect-browser";
 import axios from "axios";
@@ -14,7 +7,7 @@ import { load } from "@fingerprintjs/fingerprintjs";
 const fp$ = from(load({})).pipe(
     switchMap(async (fp) => {
         return (await fp.get()).visitorId;
-    }),
+    })
 );
 
 Object.defineProperty(window, "onbeforeunload", {
@@ -23,29 +16,66 @@ Object.defineProperty(window, "onbeforeunload", {
     configurable: true,
 });
 
+window.onbeforeunload = () => {};
+
+function getVideoId(): string | null {
+    const u = document
+        .querySelector('[class="ytp-title-link yt-uix-sessionlink"]')
+        ?.getAttribute("href");
+    if (!u) return null;
+    return new URL(u).searchParams.get("v");
+}
+
+function getPlaybackState(): {
+    song: string;
+    artist: string;
+    state: "playing" | "paused" | "standby";
+    el: HTMLVideoElement;
+} {
+    const el = document.querySelector(
+        "#movie_player > div.html5-video-container > video"
+    ) as HTMLVideoElement;
+
+    const song = document.querySelector(
+        "[class='title style-scope ytmusic-player-bar']"
+    )?.textContent as string;
+
+    if (el.src) {
+        return {
+            song,
+            artist: document.querySelector(artist)?.textContent as string,
+            state: el.paused ? "paused" : "playing",
+            el,
+        };
+    }
+    return {
+        el,
+        song,
+        state: "standby",
+        artist: "",
+    };
+}
+
 type Queue = { id: string; url: string };
 
 const artist =
     "div.content-info-wrapper.style-scope.ytmusic-player-bar > span > span.subtitle.style-scope.ytmusic-player-bar > yt-formatted-string > a";
 
-export function play(queue?: Queue) {
-    if (queue?.url) {
+function play(queue?: Queue) {
+    const playback = getPlaybackState();
+    if (queue?.url && playback.state !== "playing") {
         window.location.href = `/watch?v=${queue.url}&qid=${queue.id}`;
     }
-
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
-
-    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-
-    if (el) {
-        el.play();
+    if (playback.state === "paused") {
+        playback.el.play();
+        return;
     }
 }
 
 /**
  * Pause the video
  */
-export function pause() {
+function pause() {
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
     const vid = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
     if (vid) {
@@ -58,7 +88,7 @@ export function pause() {
     // el.click();
 }
 
-export function volumeUp() {
+function volumeUp() {
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
 
     const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
@@ -68,7 +98,7 @@ export function volumeUp() {
     }
 }
 
-export function volumeDown() {
+function volumeDown() {
     const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
 
     const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
@@ -78,7 +108,7 @@ export function volumeDown() {
     }
 }
 
-export function mute() {
+function mute() {
     const VIDEO_SELECTOR = ".volume";
 
     const el = document.querySelector(VIDEO_SELECTOR) as HTMLButtonElement;
@@ -88,7 +118,34 @@ export function mute() {
     }
 }
 
-export function next(queue?: Queue) {
+function lyrics() {
+    const el = document.querySelector(
+        '[class="tab-header style-scope ytmusic-player-page"]'
+    ) as HTMLButtonElement;
+
+    if (el) {
+        el.click();
+    }
+
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            const text = document.querySelector(
+                "#contents > ytmusic-description-shelf-renderer > yt-formatted-string.non-expandable.description.style-scope.ytmusic-description-shelf-renderer"
+            )?.textContent;
+
+            if (el.getAttribute("aria-disabled") === "true") {
+                resolve(null);
+            }
+
+            resolve(text);
+            if (el) {
+                el.click();
+            }
+        }, 1000);
+    });
+}
+
+function next(queue?: Queue) {
     if (queue?.url) {
         window.location.href = `/watch?v=${queue.url}&qid=${queue.id}`;
     }
@@ -102,40 +159,7 @@ export function next(queue?: Queue) {
     }
 }
 
-function simulateTyping(element: HTMLInputElement, text: string, delay = 100) {
-    element.value = ""; // Reset input value
-    element.dispatchEvent(new Event("input", { bubbles: true })); // Trigger input event for reset
-
-    let i = 0;
-
-    function typeCharacter() {
-        if (i < text.length) {
-            element.value += text[i]; // Append character
-            element.dispatchEvent(new Event("input", { bubbles: true })); // Trigger input event
-            element.dispatchEvent(
-                new KeyboardEvent("keydown", { key: text[i] }),
-            ); // Simulate keydown
-            element.dispatchEvent(new KeyboardEvent("keyup", { key: text[i] })); // Simulate keyup
-            i++;
-            setTimeout(typeCharacter, delay); // Repeat with delay
-        } else {
-            element.dispatchEvent(new Event("change", { bubbles: true })); // Trigger change event at the end
-        }
-    }
-
-    typeCharacter();
-}
-
-export function search(q: string) {
-    const el = document.querySelector(
-        ".ytmusic-search-box input",
-    ) as HTMLInputElement;
-    if (el) {
-        simulateTyping(el, q, 100);
-    }
-}
-
-export function prev() {
+function prev() {
     const PREV_SELECTOR = ".previous-button";
 
     const el = document.querySelector(PREV_SELECTOR) as HTMLButtonElement;
@@ -145,7 +169,7 @@ export function prev() {
     }
 }
 
-export function resume() {
+function resume() {
     const VIDEO_SELECTOR = "play-pause-button";
 
     const el = document.querySelector(VIDEO_SELECTOR) as HTMLButtonElement;
@@ -153,109 +177,6 @@ export function resume() {
     if (el) {
         el.click();
     }
-}
-
-function getActiveTab(): Observable<chrome.tabs.Tab> {
-    const obs = new Subject<chrome.tabs.Tab>();
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const tab = tabs[0];
-
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id as number },
-            files: ["content.js"],
-        });
-
-        if (tab) {
-            obs.next(tab);
-        }
-    });
-
-    return obs.asObservable(); // Return the observable to allow subscription
-}
-export function playCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: play,
-        });
-    });
-}
-
-export function pauseCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: pause,
-        });
-    });
-}
-
-export function nextCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: next,
-        });
-    });
-}
-
-export function prevCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: prev,
-        });
-    });
-}
-
-export function volumeUpCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: volumeUp,
-        });
-    });
-}
-
-export function volumeDownCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: volumeDown,
-        });
-    });
-}
-
-export function muteCommand() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: mute,
-        });
-    });
-}
-
-export function onVideoFinished() {
-    getActiveTab().subscribe((tab) => {
-        if (!tab.id) throw new Error("Tab not found");
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: () => {
-                chrome.storage.local.get("partyUrl", (result) => {
-                    const socket = io(result.partyUrl);
-                    socket.emit("videoFinished");
-                });
-            },
-        });
-    });
 }
 
 type Storage = "partyUrl" | "roomId" | "joined";
@@ -272,81 +193,10 @@ chrome.storage.local.get(
             queues = data;
         });
 
-        const endedPayload = {
-            roomId: ROOM_ID,
-            lastVideoId: "",
-        };
-
         socket.on("leave", async () => {
             await chrome.storage.local.remove("roomId");
             window.location.reload();
         });
-
-        setInterval(() => {
-            const VIDEO_SELECTOR =
-                "#movie_player > div.html5-video-container > video";
-
-            let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-            if (!el) return;
-
-            el.ontimeupdate = () => {
-                endedPayload.lastVideoId = new URL(
-                    window.location.href,
-                ).searchParams.get("v") as string;
-                el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-                if (queues.length == 0) {
-                    return;
-                }
-                if (el.duration - el.currentTime < 2) {
-                    console.log("Still playin!");
-                    // Trigger 2 seconds before end
-                    if (!el.paused) {
-                        // console.log("Still playin!");
-                        pause();
-                        socket.emit("ended", endedPayload);
-                    }
-                }
-            };
-
-            el.onplay = () => {
-                socket.emit("started", {
-                    id: new URL(window.location.href).searchParams.get("qid"),
-                });
-            };
-        }, 2000);
-
-        const VIDEO_SELECTOR =
-            "#movie_player > div.html5-video-container > video";
-
-        let el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-
-        if (el) {
-            el.ontimeupdate = () => {
-                el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
-                endedPayload.lastVideoId = new URL(
-                    window.location.href,
-                ).searchParams.get("v") as string;
-                if (queues.length == 0) {
-                    return;
-                }
-                if (el.duration - el.currentTime < 2) {
-                    console.log("Still playin!");
-
-                    // Trigger 2 seconds before end
-                    if (!el.paused) {
-                        console.log("Still playin!");
-                        pause();
-                        socket.emit("ended", endedPayload);
-                    }
-                }
-            };
-
-            el.onplay = () => {
-                socket.emit("started", {
-                    id: new URL(window.location.href).searchParams.get("qid"),
-                });
-            };
-        }
 
         const join$ = from(
             axios.get("https://ifconfig.me/all.json", {
@@ -354,7 +204,7 @@ chrome.storage.local.get(
                     "Content-Type": "application/json",
                     Accept: "application/json",
                 },
-            }),
+            })
         ).pipe(
             switchMap((res) => {
                 return new Promise<{ id: string; browser: string; ip: string }>(
@@ -370,7 +220,7 @@ chrome.storage.local.get(
 
                             const accountButton: HTMLButtonElement | null =
                                 document.querySelector(
-                                    '[aria-label="Open avatar menu"]',
+                                    '[aria-label="Open avatar menu"]'
                                 );
 
                             if (!accountButton) {
@@ -386,7 +236,7 @@ chrome.storage.local.get(
                             accountButton.click();
 
                             const querySelector = document.querySelector(
-                                '[class="style-scope tp-yt-iron-dropdown"]',
+                                '[class="style-scope tp-yt-iron-dropdown"]'
                             ) as HTMLDivElement;
                             if (querySelector) {
                                 querySelector.style.display = "hidden";
@@ -426,7 +276,7 @@ chrome.storage.local.get(
                             console.log(error);
                             reject(error);
                         }
-                    },
+                    }
                 );
             }),
             switchMap(async (data) => {
@@ -447,7 +297,7 @@ chrome.storage.local.get(
                 if (data.id) {
                     socket.emit("join", data);
                 }
-            }),
+            })
         );
 
         chrome.storage.local.onChanged.addListener(async (changes) => {
@@ -469,23 +319,28 @@ chrome.storage.local.get(
                     i == 0 &&
                     mutation.target.textContent
                 ) {
-                    const title = [
-                        mutation.target.textContent,
-                        document.querySelector(artist)?.textContent,
-                    ].join(" - ");
-                    socket.emit("change", {
-                        title,
-                        videoId: new URL(window.location.href).searchParams.get(
-                            "v",
-                        ),
-                        roomId: ROOM_ID,
-                    });
+                    setTimeout(() => {
+                        const playback = getPlaybackState();
+
+                        socket.emit("started", {
+                            roomId: ROOM_ID,
+                            videoId: getVideoId(),
+                        });
+                        if (queues[0]) {
+                            next(queues[0]);
+                            return;
+                        }
+                        socket.emit("notify", {
+                            message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
+                            roomId: ROOM_ID,
+                        });
+                    }, 1000);
                 }
             });
         });
 
         const titleElement = document.querySelector(
-            ".title.ytmusic-player-bar",
+            ".title.ytmusic-player-bar"
         );
         if (titleElement) {
             playbackObserver.observe(titleElement, {
@@ -499,22 +354,49 @@ chrome.storage.local.get(
             join$.subscribe();
         });
 
-        socket.on("play", (data: Queue) => {
-            console.log(data);
-            play(data);
-        });
+        socket.on("play", () => {
+            console.log(queues);
+            const playback = getPlaybackState();
 
-        socket.on("search", (query: string) => {
-            search(query);
+            if (playback.state === "paused") {
+                play();
+                socket.emit("notify", {
+                    message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
+                    roomId: ROOM_ID,
+                });
+                return;
+            }
+
+            if (playback.state === "standby") {
+                play(queues[0]);
+                if (!queues[0]) {
+                    socket.emit("notify", {
+                        message: `🛑 No queue found. Please add a queue first`,
+                        roomId: ROOM_ID,
+                    });
+                }
+                return;
+            }
+
+            socket.emit("notify", {
+                message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
+                roomId: ROOM_ID,
+            });
         });
 
         socket.on("pause", () => {
             pause();
+
+            const playback = getPlaybackState();
+
+            socket.emit("notify", {
+                message: `⏸️ ${playback.song} now paused`,
+                roomId: ROOM_ID,
+            });
         });
 
-        socket.on("next", (data: Queue) => {
-            console.log(data);
-            next(data);
+        socket.on("next", () => {
+            next(queues[0]);
         });
 
         socket.on("prev", () => {
@@ -531,6 +413,30 @@ chrome.storage.local.get(
 
         socket.on("mute", () => {
             mute();
+            socket.emit("notify", {
+                message:
+                    "🤫 Shhh... we're on mute. Enjoy the silence (for now)!",
+                roomId: ROOM_ID,
+            });
+        });
+
+        socket.on("unmute", () => {
+            mute();
+            socket.emit("notify", {
+                message: "🎶 We're back! Audio unmuted—let the music play!",
+                roomId: ROOM_ID,
+            });
+        });
+
+        socket.on("lyrics", async () => {
+            const txt =
+                (await lyrics()) ||
+                "🤷‍♀️ No lyrics this time—guess we're freestyling!";
+
+            socket.emit("notify", {
+                message: txt,
+                roomId: ROOM_ID,
+            });
         });
 
         socket.on("resume", () => {
@@ -540,5 +446,5 @@ chrome.storage.local.get(
         socket.on("disconnect", () => {
             console.log("Disconnected from WebSocket server");
         });
-    },
+    }
 );

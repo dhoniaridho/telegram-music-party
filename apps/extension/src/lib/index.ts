@@ -319,17 +319,29 @@ chrome.storage.local.get(
                     i == 0 &&
                     mutation.target.textContent
                 ) {
+                    pause();
+
                     setTimeout(() => {
                         const playback = getPlaybackState();
 
+                        const videoId = getVideoId();
+
+                        // check if it has queue
+                        if (queues.length === 0) {
+                            play();
+                        } else {
+                            if (videoId !== queues[0]?.url) {
+                                next(queues[0]);
+                                return;
+                            }
+                            play();
+                        }
+
                         socket.emit("started", {
                             roomId: ROOM_ID,
-                            videoId: getVideoId(),
+                            videoId: videoId,
                         });
-                        if (queues[0]) {
-                            next(queues[0]);
-                            return;
-                        }
+
                         socket.emit("notify", {
                             message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
                             roomId: ROOM_ID,
@@ -390,7 +402,7 @@ chrome.storage.local.get(
             const playback = getPlaybackState();
 
             socket.emit("notify", {
-                message: `⏸️ ${playback.song} now paused`,
+                message: `⏸️ ___${playback.song}___ - ${playback.artist} is now paused`,
                 roomId: ROOM_ID,
             });
         });

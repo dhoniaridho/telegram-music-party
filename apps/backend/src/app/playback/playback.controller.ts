@@ -1,4 +1,12 @@
-import { Ctx, Start, Command, On, Action, Update } from 'nestjs-telegraf';
+import {
+    Ctx,
+    Start,
+    Command,
+    On,
+    Action,
+    Update,
+    InlineQuery,
+} from 'nestjs-telegraf';
 import { Context, Markup, NarrowedContext } from 'telegraf';
 import { PlaybackGateway } from './playback.gateway';
 import {
@@ -514,7 +522,7 @@ export class PlaybackTelegramController {
         );
     }
 
-    @On('inline_query')
+    @InlineQuery(/.*/)
     async search(
         @Ctx()
         ctx: NarrowedContext<Context<UpdateType>, UpdateType.InlineQueryUpdate>,
@@ -592,8 +600,9 @@ export class PlaybackTelegramController {
         if (
             addToQueueBtn.text !== 'Verifying..' ||
             !addToQueueBtn.callback_data.startsWith('verify:')
-        )
+        ) {
             return;
+        }
 
         const videoId = addToQueueBtn.callback_data.split(':')[1];
 
@@ -624,12 +633,6 @@ export class PlaybackTelegramController {
 
         await this.playbackService.addToQueue(roomId, videoId, songCombined);
 
-        // emit new queues
-        this.gateway.updateQueue(
-            roomId,
-            await this.playbackService.getQueues(roomId),
-        );
-
         await ctx.telegram.editMessageText(
             undefined,
             undefined,
@@ -646,6 +649,12 @@ export class PlaybackTelegramController {
             {
                 parse_mode: 'HTML',
             },
+        );
+
+        // emit new queues
+        this.gateway.updateQueue(
+            roomId,
+            await this.playbackService.getQueues(roomId),
         );
     }
 
@@ -665,6 +674,8 @@ export class PlaybackTelegramController {
             await ctx.answerCbQuery('You are not allowed to add this song');
             return;
         }
+
+        await ctx.answerCbQuery('Adding to queue...');
 
         await ctx.editMessageReplyMarkup({
             inline_keyboard: [

@@ -88,24 +88,36 @@ function pause() {
     // el.click();
 }
 
-function volumeUp() {
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+function volumeUp(): number {
+    const event = new KeyboardEvent("keydown", { key: "=" });
+    document.dispatchEvent(event);
 
-    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+    // get current volume
+    const video = document.querySelector(
+        "#movie_player > div.html5-video-container > video"
+    ) as HTMLVideoElement;
 
-    if (el) {
-        el.volume += 0.1;
+    if (video) {
+        return video.volume * 100;
     }
+
+    return 0;
 }
 
-function volumeDown() {
-    const VIDEO_SELECTOR = "#movie_player > div.html5-video-container > video";
+function volumeDown(): number {
+    const event = new KeyboardEvent("keydown", { key: "-" });
+    document.dispatchEvent(event);
 
-    const el = document.querySelector(VIDEO_SELECTOR) as HTMLVideoElement;
+    // get current volume
+    const video = document.querySelector(
+        "#movie_player > div.html5-video-container > video",
+    ) as HTMLVideoElement;
 
-    if (el) {
-        el.volume -= 0.1;
+    if (video) {
+        return video.volume * 100;
     }
+
+    return 0;
 }
 
 function mute() {
@@ -416,11 +428,23 @@ chrome.storage.local.get(
         });
 
         socket.on("volumeUp", () => {
-            volumeUp();
+            const currentVolume = volumeUp();
+
+            // notify
+            socket.emit("notify", {
+                message: `🔊 Volume increased. Current volume: ${currentVolume}`,
+                roomId: ROOM_ID,
+            });
         });
 
         socket.on("volumeDown", () => {
-            volumeDown();
+            const currentVolume = volumeDown();
+
+            // notify
+            socket.emit("notify", {
+                message: `🔊 Volume decreased. Current volume: ${currentVolume}`,
+                roomId: ROOM_ID,
+            });
         });
 
         socket.on("mute", () => {

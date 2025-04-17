@@ -10,8 +10,11 @@
     },
     "content_scripts": [
         {
+        
             "matches": ["https://music.youtube.com/*"],
-            "js": ["content.js"]
+            "js": ["content.js"],
+            "run_at": "document_start",
+            "world": "MAIN"
         }
     ],
     "browser_specific_settings": {

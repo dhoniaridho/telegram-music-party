@@ -10,12 +10,12 @@ import { Server, Socket } from 'socket.io';
 import { PlaybackService } from './playback.service';
 import { Join } from 'src/types/playback.type';
 import * as ffmpeg from 'fluent-ffmpeg';
+import { from, map } from 'rxjs';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class PlaybackGateway {
     constructor(private readonly playbackService: PlaybackService) {}
     @WebSocketServer() wss: Server;
-    private streamProcess: ffmpeg.FfmpegCommand;
 
     stream(roomID: string) {
         console.log(`Emitting 'stream' event to ${roomID}`);
@@ -25,8 +25,6 @@ export class PlaybackGateway {
             .format('mp3')
             .audioBitrate(128)
             .on('error', (err) => console.error('FFmpeg Error:', err));
-
-        this.streamProcess = ffmpegCommand;
 
         const stream = ffmpegCommand.pipe();
         stream.on('data', (chunk: Buffer) => {
@@ -38,6 +36,13 @@ export class PlaybackGateway {
     playCommand(roomID: string) {
         console.log(`Emitting 'play' event to ${roomID}`);
         this.wss.to(roomID).emit('play');
+    }
+
+    countConnectedClients(roomID: string) {
+        console.log(`Emitting 'count' event to ${roomID}`);
+        return from(this.wss.in(roomID).fetchSockets()).pipe(
+            map((sockets) => sockets.length),
+        );
     }
 
     pauseCommand(roomID: string) {

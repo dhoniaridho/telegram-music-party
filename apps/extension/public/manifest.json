@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "YouTube Music Party",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "description": "Control YouTube playback from a popup or keyboard shortcuts.",
     "permissions": ["activeTab", "scripting", "tabs", "storage"],
     "host_permissions": ["https://music.youtube.com/*"],

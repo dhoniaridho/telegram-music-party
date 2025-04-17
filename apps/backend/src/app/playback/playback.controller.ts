@@ -19,6 +19,7 @@ import { PlaybackService } from './playback.service';
 import { getRandomHumanReadable } from '@marianmeres/random-human-readable';
 import { YTMusicService } from 'src/platform/yt-music.service';
 import { formatDuration } from 'src/helpers/util';
+import { firstValueFrom } from 'rxjs';
 @Update()
 export class PlaybackTelegramController {
     constructor(
@@ -220,6 +221,15 @@ export class PlaybackTelegramController {
         }
 
         const roomId = room.id;
+
+        const connectedClients = await firstValueFrom(
+            this.gateway.countConnectedClients(roomId),
+        );
+
+        if (connectedClients === 0) {
+            await ctx.reply('No clients connected');
+            return;
+        }
 
         // emit play command
         this.gateway.playCommand(roomId);

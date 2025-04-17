@@ -80,6 +80,11 @@ export class PlaybackGateway {
         this.wss.to(roomID).emit('lyrics');
     }
 
+    addToQueueCommand(roomID: string, videoId: string) {
+        console.log(`Emitting 'addToQueue' event to ${roomID}`);
+        this.wss.to(roomID).emit('addToQueue', { videoId });
+    }
+
     updateQueue(roomID: string, queues: Queue[]) {
         // emit new queue
         this.wss.to(roomID).emit('queues', queues);

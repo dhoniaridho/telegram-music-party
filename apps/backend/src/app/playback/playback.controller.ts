@@ -651,6 +651,9 @@ export class PlaybackTelegramController {
             },
         );
 
+        // emit add to queue
+        this.gateway.addToQueueCommand(roomId, videoId);
+
         // emit new queues
         this.gateway.updateQueue(
             roomId,

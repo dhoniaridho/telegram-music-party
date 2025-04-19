@@ -222,6 +222,13 @@ export class PlaybackTelegramController {
 
         const roomId = room.id;
 
+        // check connected devices
+        if (!room || room.Devices.length === 0) {
+            await ctx.reply('No devices connected');
+            return;
+        }
+
+        // check connected sockets
         const connectedClients = await firstValueFrom(
             this.gateway.countConnectedClients(roomId),
         );
@@ -459,16 +466,22 @@ export class PlaybackTelegramController {
             return;
         }
 
-        if (room.Device.length == 0) {
-            await ctx.reply('No devices found');
+        if (room.Devices.length == 0) {
+            await ctx.reply('No devices connected');
             return;
         }
 
         await ctx.reply(
-            `<b>Devices:</b>\n\n${room.Device.map(
-                (d, i) =>
-                    `(${i + 1}) \n<b>Name</b> \n${d.name} \n<b>Browser Id</b> \n<code>${d.fingerprint}</code> \n<b>Joined At</b>\n${d.createdAt.toLocaleString()}\n\n`,
-            ).join('')}`,
+            [
+                '🖥️ Connected Devices:\n',
+                ...room.Devices.map((d, i) =>
+                    [
+                        ` <b>${i + 1}. ${d.name}</b>`,
+                        `🔑 Browser ID: <code>${d.fingerprint}</code>`,
+                        `⌚ Joined: ${d.createdAt.toLocaleString()}\n`,
+                    ].join('\n'),
+                ),
+            ].join('\n'),
             {
                 parse_mode: 'HTML',
             },
@@ -491,7 +504,7 @@ export class PlaybackTelegramController {
 
         // check already voted
         const userId = ctx.from?.id.toString() || '';
-        const alreadyVoted = room.Vote.find((v) => v.userId === userId);
+        const alreadyVoted = room.Votes.find((v) => v.userId === userId);
         if (alreadyVoted) {
             await ctx.reply(
                 `Nice try, DJ—but you've already voted! Let's see what the others pick 🎧`,
@@ -502,7 +515,7 @@ export class PlaybackTelegramController {
         const MINIMUM_VOTE = room.Feature ? room.Feature.minimumVotes : 5;
 
         // if will be last voter reach minimum vote
-        if (room.Vote.length + 1 >= MINIMUM_VOTE) {
+        if (room.Votes.length + 1 >= MINIMUM_VOTE) {
             // emit next command
             this.gateway.nextCommand(room.id);
 
@@ -519,11 +532,11 @@ export class PlaybackTelegramController {
         await this.playbackService.addVote(room.id, userId);
 
         const randomText = [
-            `We're at ${room.Vote.length + 1}/${MINIMUM_VOTE} votes for the next track—who's holding us up? 😄`,
-            `${room.Vote.length + 1}/${MINIMUM_VOTE} votes locked! ${MINIMUM_VOTE - (room.Vote.length + 1)} more to go—your pick could change everything 🔥`,
-            `Only ${room.Vote.length + 1} out of ${MINIMUM_VOTE} votes so far... who's lagging behind? 😏`,
-            `The fate of the next track hangs in the balance… only ${room.Vote.length + 1}/${MINIMUM_VOTE} votes in. Who will decide what's next? 🎭`,
-            `Just ${room.Vote.length + 1}/${MINIMUM_VOTE} votes in for the next track—don't be shy, cast yours! 🎶`,
+            `We're at ${room.Votes.length + 1}/${MINIMUM_VOTE} votes for the next track—who's holding us up? 😄`,
+            `${room.Votes.length + 1}/${MINIMUM_VOTE} votes locked! ${MINIMUM_VOTE - (room.Votes.length + 1)} more to go—your pick could change everything 🔥`,
+            `Only ${room.Votes.length + 1} out of ${MINIMUM_VOTE} votes so far... who's lagging behind? 😏`,
+            `The fate of the next track hangs in the balance… only ${room.Votes.length + 1}/${MINIMUM_VOTE} votes in. Who will decide what's next? 🎭`,
+            `Just ${room.Votes.length + 1}/${MINIMUM_VOTE} votes in for the next track—don't be shy, cast yours! 🎶`,
         ];
 
         // send message
@@ -614,11 +627,9 @@ export class PlaybackTelegramController {
             return;
         }
 
-        const videoId = addToQueueBtn.callback_data.split(':')[1];
+        const videoId = addToQueueBtn.callback_data.split(':')[2];
 
-        const song = await this.ytmusicService.getSong(videoId);
-
-        const messageInlineID = addToQueueBtn.callback_data.split(':')[2];
+        const messageInlineID = addToQueueBtn.callback_data.split(':')[3];
 
         // get the room
         const chatId = ctx.chat?.id.toString() || '';
@@ -636,6 +647,36 @@ export class PlaybackTelegramController {
         }
 
         const roomId = room.id;
+
+        // limit the queue to 10 songs
+        const queueLimit = room.Feature ? room.Feature.maxQueueSize : 10;
+        const queues = await this.playbackService.getQueues(roomId);
+        if (queues.length >= queueLimit) {
+            await ctx.telegram.editMessageText(
+                undefined,
+                undefined,
+                messageInlineID,
+                `🚫 Queue is full. Please remove some songs before adding new ones.`,
+            );
+            return;
+        }
+
+        // get the song detail
+        const song = await this.ytmusicService.getSong(videoId);
+
+        // check song is already in queue
+        if (queues.find((q) => q.url === videoId)) {
+            await ctx.telegram.editMessageText(
+                undefined,
+                undefined,
+                messageInlineID,
+                `🔁 "<i>${song.name} by ${song.artist.name}</i>" is already in the queue.`,
+                {
+                    parse_mode: 'HTML',
+                },
+            );
+            return;
+        }
 
         const songCombined = `${song.name} - ${song.artist.name} [${formatDuration(
             song.duration || 0,
@@ -661,11 +702,8 @@ export class PlaybackTelegramController {
             },
         );
 
-        // emit new queues
-        this.gateway.updateQueue(
-            roomId,
-            await this.playbackService.getQueues(roomId),
-        );
+        // emit add to queue
+        this.gateway.addToQueueCommand(roomId, videoId);
     }
 
     @Action(/queue:(.*)/)
@@ -692,7 +730,7 @@ export class PlaybackTelegramController {
                 [
                     Markup.button.callback(
                         `Verifying..`,
-                        `verify:${videoId}:${ctx.update.callback_query.inline_message_id}`,
+                        `verify:${senderID}:${videoId}:${ctx.update.callback_query.inline_message_id}`,
                     ),
                 ],
             ],
@@ -718,6 +756,26 @@ export class PlaybackTelegramController {
 
         await ctx.answerCbQuery('Canceling...');
         await ctx.editMessageText('❌ Canceled.');
+    }
+
+    @Action(/verify:(.*)/)
+    async verify(
+        @Ctx()
+        ctx: Context<UpdateType.CallbackQueryUpdate<CallbackQuery>> &
+            Omit<Context<UpdateType>, keyof Context<UpdateType>> & {
+                match: RegExpExecArray;
+            },
+    ) {
+        const [senderID] = ctx.match[1].split(':');
+
+        if (!senderID) return;
+
+        if (parseInt(senderID) !== ctx.from.id) {
+            await ctx.answerCbQuery('You are not allowed to do this action');
+            return;
+        }
+
+        await ctx.answerCbQuery('Sabar...');
     }
 
     @Command('queue')

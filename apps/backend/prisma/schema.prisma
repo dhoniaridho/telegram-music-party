@@ -20,9 +20,9 @@ model Room {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    Queue   Queue[]
-    Device  Device[]
-    Vote    Vote[]
+    Queues   Queue[]
+    Devices  Device[]
+    Votes    Vote[]
     Feature Feature?
 }
 
@@ -67,6 +67,7 @@ model Feature {
     muteCommand       Boolean  @default(true)
     unmuteCommand     Boolean  @default(true)
     volumeCommand     Boolean  @default(false)
+    maxQueueSize      Int      @default(25)
     createdAt         DateTime @default(now())
     updatedAt         DateTime @updatedAt
 }

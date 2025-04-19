@@ -5,32 +5,15 @@ import {
     WebSocketGateway,
     WebSocketServer,
 } from '@nestjs/websockets';
-import { Queue } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { PlaybackService } from './playback.service';
 import { Join } from 'src/types/playback.type';
-import * as ffmpeg from 'fluent-ffmpeg';
 import { from, map } from 'rxjs';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class PlaybackGateway {
     constructor(private readonly playbackService: PlaybackService) {}
     @WebSocketServer() wss: Server;
-
-    stream(roomID: string) {
-        console.log(`Emitting 'stream' event to ${roomID}`);
-        const ffmpegCommand = ffmpeg(
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        ) // Replace with your music source
-            .format('mp3')
-            .audioBitrate(128)
-            .on('error', (err) => console.error('FFmpeg Error:', err));
-
-        const stream = ffmpegCommand.pipe();
-        stream.on('data', (chunk: Buffer) => {
-            this.wss.emit('audio-stream', chunk.toString('base64')); // Send base64 encoded audio
-        });
-    }
 
     // Function to emit events from the server
     playCommand(roomID: string) {
@@ -85,13 +68,13 @@ export class PlaybackGateway {
         this.wss.to(roomID).emit('lyrics');
     }
 
-    updateQueue(roomID: string, queues: Queue[]) {
-        // emit new queue
-        this.wss.to(roomID).emit('queues', queues);
+    addToQueueCommand(roomID: string, videoId: string) {
+        console.log(`Emitting 'addToQueue' event to ${roomID}`);
+        this.wss.to(roomID).emit('addToQueue', { videoId });
     }
 
     leave(roomID: string) {
-        // emit leave
+        console.log(`Emitting 'leave' event to ${roomID}`);
         this.wss.to(roomID).emit('leave');
     }
 
@@ -126,33 +109,13 @@ export class PlaybackGateway {
             );
         }
 
-        // get queues
-        const queues = await this.playbackService.getQueues(room.id);
-        this.wss.emit('queues', queues);
-
         void socket.join(room.id);
 
-        console.log('player join', data.id);
-    }
-
-    @SubscribeMessage('refreshQueue')
-    async refresh(
-        @ConnectedSocket() socket: Socket,
-        @MessageBody() data: Join,
-    ) {
-        // get room
-        const room = await this.playbackService.getRoom(data.id);
-
-        if (!room) {
-            console.log('Room not found');
-            return;
-        }
-
-        // get queues
+        // emit join with queue
         const queues = await this.playbackService.getQueues(room.id);
-        this.wss.to(room.id).emit('queues', queues);
+        this.wss.to(room.id).emit('joined', queues);
 
-        void socket.join(room.id);
+        console.log('player joined', data.id);
     }
 
     @SubscribeMessage('leave')
@@ -208,12 +171,6 @@ export class PlaybackGateway {
                     data.roomId,
                     data.videoId,
                 );
-
-                // emit new queues
-                this.updateQueue(
-                    data.roomId,
-                    await this.playbackService.getQueues(data.roomId),
-                );
             }
         }
 
@@ -223,8 +180,6 @@ export class PlaybackGateway {
 
     @SubscribeMessage('notify')
     async onNotify(@MessageBody() data: { roomId: string; message: string }) {
-        console.log('Nofity', data);
-
         // get room
         const room = await this.playbackService.getRoom(data.roomId);
 

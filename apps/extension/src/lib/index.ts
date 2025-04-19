@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { from, tap, switchMap, firstValueFrom } from "rxjs";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 import { detect } from "detect-browser";
 import axios from "axios";
 import { load } from "@fingerprintjs/fingerprintjs";
@@ -15,8 +16,6 @@ Object.defineProperty(window, "onbeforeunload", {
     set: () => {},
     configurable: true,
 });
-
-window.onbeforeunload = () => {};
 
 function getVideoId(): string | null {
     const u = document
@@ -110,7 +109,7 @@ function volumeDown(): number {
 
     // get current volume
     const video = document.querySelector(
-        "#movie_player > div.html5-video-container > video",
+        "#movie_player > div.html5-video-container > video"
     ) as HTMLVideoElement;
 
     if (video) {
@@ -191,296 +190,461 @@ function resume() {
     }
 }
 
-type Storage = "partyUrl" | "roomId" | "joined";
+function getConfig() {
+    const config = {
+        partyUrl: localStorage.getItem("partyUrl"),
+        roomId: localStorage.getItem("roomId"),
+    };
 
-chrome.storage.local.get(
-    ["partyUrl", "roomId", "joined"] as Storage[],
-    (result) => {
-        const socket = io(result.partyUrl); // Replace with your server URL
-        const ROOM_ID = result.roomId as string;
+    return config;
+}
 
-        let queues: Queue[] = [];
+function createButton({
+    onClick,
+    children,
+}: {
+    onClick: any;
+    children: string;
+}) {
+    const btn = document.createElement("tp-yt-paper-item");
+    btn.setAttribute("role", "link");
+    btn.classList.add("style-scope", "ytmusic-guide-entry-renderer");
+    btn.setAttribute("style-target", "host");
+    btn.setAttribute("tabindex", "0");
+    btn.setAttribute("aria-disabled", "false");
+    btn.setAttribute("aria-current", "false");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("stroke-width", "1.5");
+    svg.setAttribute("stroke", "currentColor");
+    svg.style.width = "20px";
+    svg.style.height = "20px";
 
-        socket.on("queues", (data) => {
-            queues = data;
-        });
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute(
+        "d",
+        "M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"
+    );
 
-        socket.on("leave", async () => {
-            await chrome.storage.local.remove("roomId");
-            window.location.reload();
-        });
+    svg.appendChild(path);
 
-        const join$ = from(
-            axios.get("https://ifconfig.me/all.json", {
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                },
-            })
-        ).pipe(
-            switchMap((res) => {
-                return new Promise<{ id: string; browser: string; ip: string }>(
-                    (resolve, reject) => {
-                        try {
-                            const info = detect();
+    const txt = document.createElement("span");
+    txt.style.margin = "0 10px";
 
-                            const browser = [
-                                (info?.name?.slice(0, 1).toUpperCase() || "") +
-                                    (info?.name?.slice(1) || ""),
-                                info?.os, // Mac OS, Windows
-                            ]; // [Chrome, Mac OS]
+    txt.textContent = children;
+    btn.appendChild(svg);
+    btn.appendChild(txt);
 
-                            const accountButton: HTMLButtonElement | null =
-                                document.querySelector(
-                                    '[aria-label="Open avatar menu"]'
-                                );
+    btn.addEventListener("click", onClick);
+    return btn;
+}
 
-                            if (!accountButton) {
-                                resolve({
-                                    id: result.roomId || "",
-                                    browser:
-                                        browser.filter(Boolean).join(" ") || "",
-                                    ip: res.data.ip_addr || "",
-                                });
-                                return;
-                            }
-
-                            accountButton.click();
-
-                            const querySelector = document.querySelector(
-                                '[class="style-scope tp-yt-iron-dropdown"]'
-                            ) as HTMLDivElement;
-                            if (querySelector) {
-                                querySelector.style.display = "hidden";
-                            }
-                            accountButton.click();
-                            if (querySelector) {
-                                querySelector.style.display = "inherit";
-                            }
-
-                            setTimeout(() => {
-                                accountButton.click();
-                                const user: HTMLDivElement | null =
-                                    document.querySelector("#account-name");
-
-                                if (!user) {
-                                    resolve({
-                                        id: result.roomId || "",
-                                        browser:
-                                            browser.filter(Boolean).join(" ") ||
-                                            "",
-                                        ip: res.data.ip_addr || "",
-                                    });
-                                    return;
-                                }
-
-                                // add user to browser
-                                browser.unshift(user?.textContent);
-
-                                resolve({
-                                    id: result.roomId || "",
-                                    browser:
-                                        browser.filter(Boolean).join(" ") || "",
-                                    ip: res.data.ip_addr || "",
-                                });
-                            }, 300);
-                        } catch (error) {
-                            console.log(error);
-                            reject(error);
-                        }
-                    }
-                );
-            }),
-            switchMap(async (data) => {
-                const fp = await firstValueFrom(fp$);
-
-                return {
-                    ...data,
-                    fingerprint: fp,
-                };
-            }),
-            tap(async (data) => {
-                console.log(data);
-                console.log(result.joined);
-                // if (result.joined) {
-                //     socket.emit("refreshQueue", data);
-                //     return;
-                // }
-                if (data.id) {
-                    socket.emit("join", data);
-                }
-            })
-        );
-
-        chrome.storage.local.onChanged.addListener(async (changes) => {
-            console.log(changes.roomId);
-            const fp = await firstValueFrom(fp$);
-            if (!changes.roomId.newValue) {
-                socket.emit("leave", {
-                    id: changes.roomId.oldValue,
-                    fingerprint: fp,
-                });
+function createButtonLeave(
+    socket: Socket,
+    config: ReturnType<typeof getConfig>
+) {
+    setTimeout(async () => {
+        const btn = createButton({
+            children: "Leave Room",
+            onClick: async () => {
                 console.log("Leaving room");
+                const fp = await firstValueFrom(fp$);
+                socket.emit("leave", {
+                    id: config.roomId,
+                    fingerprint: fp,
+                });
+                Object.keys(config).forEach((key) => {
+                    localStorage.removeItem(key);
+                });
+                window.location.reload();
+            },
+        });
+        document
+            .querySelector(
+                "[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']"
+            )
+            ?.append(btn);
+    }, 2000);
+}
+
+function createJoinButton() {
+    setTimeout(async () => {
+        const btn = createButton({
+            children: "Join Room",
+            onClick: async () => {
+                const roomId = prompt("Enter your room ID");
+                if (!roomId) return;
+                localStorage.setItem("roomId", roomId as string);
+
+                const partyUrl = prompt(
+                    "Enter your party URL",
+                    "https://party.dhoniaridho.com"
+                ) as string;
+                if (!partyUrl) return;
+                localStorage.setItem("partyUrl", partyUrl);
+
+                if (roomId && partyUrl) {
+                    window.location.reload();
+                }
+            },
+        });
+        document
+            .querySelector(
+                "[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']"
+            )
+            ?.append(btn);
+    }, 2000);
+}
+
+function getAppInstance<T>() {
+    const app = document.querySelector("ytmusic-app");
+    return app as Element & {
+        networkManager: {
+            fetch: (url: string, init?: object) => Promise<T>;
+        };
+    };
+}
+
+function getQueueInstance() {
+    const q = document.querySelector("#queue");
+    (globalThis as any).queue = q;
+
+    setInterval(() => {
+        (globalThis as any).queue = document.querySelector(
+            "#queue"
+        ) as Element & {
+            dispatch: (action: any) => void;
+            queue: {
+                store: {
+                    store: {
+                        dispatch: (action: any) => void;
+                        getState: () => any;
+                    };
+                };
+            };
+        };
+    }, 300);
+
+    return (globalThis as any).queue;
+}
+
+async function addQueue(videoIds: string) {
+    if (videoIds.length < 1) return;
+    const app = getAppInstance();
+    const queue = getQueueInstance();
+    const store = queue?.queue.store.store;
+    const payload = {
+        queueContextParams: store.getState().queue.queueContextParams,
+        queueInsertPosition: "INSERT_AT_END",
+        videoIds: videoIds.split(","),
+    };
+
+    await app.networkManager
+        .fetch("music/get_queue", payload)
+        .then((result) => {
+            if (
+                result &&
+                typeof result === "object" &&
+                "queueDatas" in result &&
+                Array.isArray(result.queueDatas)
+            ) {
+                const queueItems = store.getState().queue.items;
+                const queueItemsLength = queueItems.length ?? 0;
+                queue?.dispatch({
+                    type: "ADD_ITEMS",
+                    payload: {
+                        nextQueueItemId: store.getState().queue.nextQueueItemId,
+                        index: queueItemsLength,
+                        items: result.queueDatas
+                            .map((it) =>
+                                typeof it === "object" && it && "content" in it
+                                    ? it.content
+                                    : null
+                            )
+                            .filter(Boolean),
+                        shuffleEnabled: false,
+                        shouldAssignIds: true,
+                    },
+                });
             }
         });
+}
+document.addEventListener("DOMContentLoaded", async () => {
+    const config = getConfig();
 
-        const playbackObserver = new MutationObserver((mutations) => {
-            mutations.forEach((mutation, i) => {
-                if (
-                    mutation.type === "childList" &&
-                    i == 0 &&
-                    mutation.target.textContent
-                ) {
-                    pause();
+    const socket = io(config.partyUrl as string);
+    const ROOM_ID = config.roomId as string;
 
-                    setTimeout(() => {
-                        const playback = getPlaybackState();
+    if (config.partyUrl && config.roomId) {
+        createButtonLeave(socket, config);
+    } else {
+        createJoinButton();
+    }
 
-                        const videoId = getVideoId();
+    let queues: Queue[] = [];
 
-                        // check if it has queue
-                        if (queues.length === 0) {
-                            play();
-                        } else {
-                            if (videoId !== queues[0]?.url) {
-                                next(queues[0]);
-                                return;
-                            }
-                            play();
+    socket.on("joined", async (data: Queue[]) => {
+        queues = data;
+        if (data[0]) {
+            play(data[0]);
+        }
+        setTimeout(async () => {
+            await addQueue(data.map((q) => q.url).join(","));
+        }, 1000);
+    });
+
+    socket.on("leave", async () => {
+        localStorage.removeItem("roomId");
+        window.location.reload();
+    });
+
+    const join$ = from(
+        axios.get("https://ifconfig.me/all.json", {
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+        })
+    ).pipe(
+        switchMap((res) => {
+            return new Promise<{ id: string; browser: string; ip: string }>(
+                (resolve, reject) => {
+                    try {
+                        const info = detect();
+
+                        const browser = [
+                            (info?.name?.slice(0, 1).toUpperCase() || "") +
+                                (info?.name?.slice(1) || ""),
+                            info?.os, // Mac OS, Windows
+                        ]; // [Chrome, Mac OS]
+
+                        const accountButton: HTMLButtonElement | null =
+                            document.querySelector(
+                                '[aria-label="Open avatar menu"]'
+                            );
+
+                        if (!accountButton) {
+                            resolve({
+                                id: config.roomId || "",
+                                browser:
+                                    browser.filter(Boolean).join(" ") || "",
+                                ip: res.data.ip_addr || "",
+                            });
+                            return;
                         }
 
-                        socket.emit("started", {
-                            roomId: ROOM_ID,
-                            videoId: videoId,
-                        });
+                        accountButton.click();
 
-                        socket.emit("notify", {
-                            message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
-                            roomId: ROOM_ID,
-                        });
-                    }, 1000);
+                        const querySelector = document.querySelector(
+                            '[class="style-scope tp-yt-iron-dropdown"]'
+                        ) as HTMLDivElement;
+                        if (querySelector) {
+                            querySelector.style.display = "hidden";
+                        }
+                        accountButton.click();
+                        if (querySelector) {
+                            querySelector.style.display = "inherit";
+                        }
+
+                        setTimeout(() => {
+                            accountButton.click();
+                            const user: HTMLDivElement | null =
+                                document.querySelector("#account-name");
+
+                            if (!user) {
+                                resolve({
+                                    id: config.roomId || "",
+                                    browser:
+                                        browser.filter(Boolean).join(" ") || "",
+                                    ip: res.data.ip_addr || "",
+                                });
+                                return;
+                            }
+
+                            // add user to browser
+                            browser.unshift(user?.textContent);
+
+                            resolve({
+                                id: config.roomId || "",
+                                browser:
+                                    browser.filter(Boolean).join(" ") || "",
+                                ip: res.data.ip_addr || "",
+                            });
+                        }, 300);
+                    } catch (error) {
+                        console.log(error);
+                        reject(error);
+                    }
                 }
-            });
-        });
+            );
+        }),
+        switchMap(async (data) => {
+            const fp = await firstValueFrom(fp$);
 
-        const titleElement = document.querySelector(
-            ".title.ytmusic-player-bar"
-        );
-        if (titleElement) {
-            playbackObserver.observe(titleElement, {
-                childList: true,
-                subtree: true,
-            });
-        }
-
-        socket.on("connect", () => {
-            console.log("Connected to WebSocket server with ID:", socket.id);
-            join$.subscribe();
-        });
-
-        socket.on("play", () => {
-            console.log(queues);
-            const playback = getPlaybackState();
-
-            if (playback.state === "paused") {
-                play();
-                socket.emit("notify", {
-                    message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
-                    roomId: ROOM_ID,
-                });
-                return;
+            return {
+                ...data,
+                fingerprint: fp,
+            };
+        }),
+        tap(async (data) => {
+            if (data.id) {
+                socket.emit("join", data);
             }
+        })
+    );
 
-            if (playback.state === "standby") {
-                play(queues[0]);
-                if (!queues[0]) {
+    const playbackObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation, i) => {
+            if (
+                mutation.type === "childList" &&
+                i == 0 &&
+                mutation.target.textContent
+            ) {
+                setTimeout(() => {
+                    const playback = getPlaybackState();
+
+                    const videoId = getVideoId();
+
+                    socket.emit("started", {
+                        roomId: ROOM_ID,
+                        videoId: videoId,
+                    });
+
                     socket.emit("notify", {
-                        message: `🛑 No queue found. Please add a queue first`,
+                        message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
                         roomId: ROOM_ID,
                     });
-                }
-                return;
+                }, 1000);
             }
-
-            socket.emit("notify", {
-                message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
-                roomId: ROOM_ID,
-            });
         });
+    });
 
-        socket.on("pause", () => {
-            pause();
-
-            const playback = getPlaybackState();
-
-            socket.emit("notify", {
-                message: `⏸️ ___${playback.song}___ - ${playback.artist} is now paused`,
-                roomId: ROOM_ID,
-            });
-        });
-
-        socket.on("next", () => {
-            next(queues[0]);
-        });
-
-        socket.on("prev", () => {
-            prev();
-        });
-
-        socket.on("volumeUp", () => {
-            const currentVolume = volumeUp();
-
-            // notify
-            socket.emit("notify", {
-                message: `🔊 Volume increased. Current volume: ${currentVolume}`,
-                roomId: ROOM_ID,
-            });
-        });
-
-        socket.on("volumeDown", () => {
-            const currentVolume = volumeDown();
-
-            // notify
-            socket.emit("notify", {
-                message: `🔊 Volume decreased. Current volume: ${currentVolume}`,
-                roomId: ROOM_ID,
-            });
-        });
-
-        socket.on("mute", () => {
-            mute();
-            socket.emit("notify", {
-                message:
-                    "🤫 Shhh... we're on mute. Enjoy the silence (for now)!",
-                roomId: ROOM_ID,
-            });
-        });
-
-        socket.on("unmute", () => {
-            mute();
-            socket.emit("notify", {
-                message: "🎶 We're back! Audio unmuted—let the music play!",
-                roomId: ROOM_ID,
-            });
-        });
-
-        socket.on("lyrics", async () => {
-            const txt =
-                (await lyrics()) ||
-                "🤷‍♀️ No lyrics this time—guess we're freestyling!";
-
-            socket.emit("notify", {
-                message: txt,
-                roomId: ROOM_ID,
-            });
-        });
-
-        socket.on("resume", () => {
-            resume();
-        });
-
-        socket.on("disconnect", () => {
-            console.log("Disconnected from WebSocket server");
+    const titleElement = document.querySelector(".title.ytmusic-player-bar");
+    if (titleElement) {
+        playbackObserver.observe(titleElement, {
+            childList: true,
+            subtree: true,
         });
     }
-);
+
+    socket.on("connect", async () => {
+        console.log("Connected to WebSocket server with ID:", socket.id);
+        join$.subscribe();
+    });
+
+    socket.on("play", () => {
+        const playback = getPlaybackState();
+
+        if (playback.state == "standby" && queues[0]) {
+            window.location.reload();
+            return;
+        }
+
+        if (playback.state == "standby" && !queues[0]) {
+            socket.emit("notify", {
+                message: `🚫 No tracks in the queue right now.`,
+                roomId: ROOM_ID,
+            });
+            return;
+        }
+
+        play();
+
+        socket.emit("notify", {
+            message: `Now playing: ___"${playback.song}"___ by ${playback.artist} 🎧`,
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("pause", () => {
+        pause();
+
+        const playback = getPlaybackState();
+
+        socket.emit("notify", {
+            message: `⏸️ ___${playback.song}___ - ${playback.artist} is now paused`,
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("next", () => {
+        next();
+    });
+
+    socket.on("prev", () => {
+        prev();
+    });
+
+    socket.on("volumeUp", () => {
+        const currentVolume = volumeUp();
+
+        // notify
+        socket.emit("notify", {
+            message: `🔊 Volume increased. Current volume: ${currentVolume}`,
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("volumeDown", () => {
+        const currentVolume = volumeDown();
+
+        // notify
+        socket.emit("notify", {
+            message: `🔊 Volume decreased. Current volume: ${currentVolume}`,
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("mute", () => {
+        mute();
+        socket.emit("notify", {
+            message: "🤫 Shhh... we're on mute. Enjoy the silence (for now)!",
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("unmute", () => {
+        mute();
+        socket.emit("notify", {
+            message: "🎶 We're back! Audio unmuted—let the music play!",
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("lyrics", async () => {
+        const txt =
+            (await lyrics()) ||
+            "🤷‍♀️ No lyrics this time—guess we're freestyling!";
+
+        socket.emit("notify", {
+            message: txt,
+            roomId: ROOM_ID,
+        });
+    });
+
+    socket.on("resume", () => {
+        resume();
+    });
+
+    socket.on("addToQueue", async ({ videoId }: { videoId: string }) => {
+        const playback = getPlaybackState();
+        console.log("addToQueue", videoId);
+
+        if (playback.state == "standby") {
+            queues.push({
+                id: crypto.randomUUID(),
+                url: videoId,
+            });
+            return;
+        }
+
+        await addQueue(videoId);
+    });
+
+    socket.on("disconnect", () => {
+        console.log("Disconnected from WebSocket server");
+    });
+});

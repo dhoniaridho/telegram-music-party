@@ -141,6 +141,7 @@ export class PlaybackService {
             },
             include: {
                 Feature: true,
+                Devices: true,
             },
         });
     }
@@ -151,8 +152,8 @@ export class PlaybackService {
                 chatId,
             },
             include: {
-                Device: true,
-                Vote: true,
+                Devices: true,
+                Votes: true,
                 Feature: true,
             },
         });

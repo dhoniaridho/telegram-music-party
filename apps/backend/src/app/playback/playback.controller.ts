@@ -20,9 +20,13 @@ import { getRandomHumanReadable } from '@marianmeres/random-human-readable';
 import { YTMusicService } from 'src/platform/yt-music.service';
 import { formatDuration } from 'src/helpers/util';
 import { firstValueFrom } from 'rxjs';
+import { Inject } from '@nestjs/common';
+import { Song } from 'src/types/cache.type';
+import Keyv from 'keyv';
 @Update()
 export class PlaybackTelegramController {
     constructor(
+        @Inject('KEYV_CACHE') private cacheManager: Keyv,
         private readonly gateway: PlaybackGateway,
         private readonly playbackService: PlaybackService,
         private readonly ytmusicService: YTMusicService,
@@ -554,19 +558,45 @@ export class PlaybackTelegramController {
             // get songs
             const searchQuery = ctx?.update?.inline_query?.query; // Change to your search keyword
 
+            const inlineQueryID = ctx?.update?.inline_query?.id;
+            if (!inlineQueryID) return;
+
             if (!searchQuery || searchQuery.length < 3) return;
 
             const songs = await this.ytmusicService.searchSongs(searchQuery);
 
             const senderID = ctx.from.id;
 
+            const cacheExpireTime = 60 * 1000; // 1 minute
+
             const videoIds: string[] = [];
+
+            const cacheKey = `songs:${inlineQueryID}`;
+            const cachedData = await this.cacheManager.get<Song>(cacheKey);
+            if (!cachedData) {
+                void this.cacheManager.set<Song[]>(
+                    cacheKey,
+                    songs.map((row) => ({
+                        videoId: row.videoId,
+                        name: row.name,
+                        artist: row.artist,
+                        duration: row.duration,
+                    })) as Song[],
+                    cacheExpireTime,
+                );
+            }
 
             await ctx.answerInlineQuery(
                 songs
+                    .filter((row) => {
+                        if (videoIds.includes(row.videoId)) return false;
+
+                        videoIds.push(row.videoId);
+                        return true;
+                    })
                     .map(
                         (row): InlineQueryResult => ({
-                            id: `${row.videoId}`,
+                            id: `${inlineQueryID}:${row.videoId}`,
                             type: 'article',
                             title: row.name,
                             description: `${row.artist.name} • ${row.album?.name} • ${formatDuration(row.duration || 0)}`,
@@ -596,16 +626,60 @@ export class PlaybackTelegramController {
                                 ],
                             ]),
                         }),
-                    )
-                    .filter((r) => {
-                        if (videoIds.includes(r.id)) return false;
-                        videoIds.push(r.id);
-                        return true;
-                    }),
+                    ),
+                {},
             );
         } catch (e) {
             console.error(e);
         }
+    }
+
+    @On('chosen_inline_result')
+    async chosenInlineResult(
+        @Ctx()
+        ctx: Context<UpdateType.ChosenInlineResultUpdate>,
+    ) {
+        const { inline_message_id, query } = ctx.update.chosen_inline_result;
+        if (!inline_message_id || !query) return;
+
+        // get result id
+        const resultId = ctx.update.chosen_inline_result.result_id;
+
+        // get search query id
+        const [inlineQueryID, videoId] = resultId.split(':');
+
+        // get from cache
+        const cacheKey = `songs:${inlineQueryID}`;
+        const cachedSongs = await this.cacheManager.get<Song[]>(cacheKey);
+        if (!cachedSongs) {
+            await ctx.telegram.editMessageText(
+                undefined,
+                undefined,
+                inline_message_id,
+                `🔗 This link has expired. Please try generating a new one.`,
+            );
+            return;
+        }
+
+        // get the song detail
+        const song = cachedSongs.find((row) => row.videoId === videoId);
+        if (!song) {
+            await ctx.telegram.editMessageText(
+                undefined,
+                undefined,
+                inline_message_id,
+                `⚠️ Something went wrong with the link. Please try again or request a new one.`,
+            );
+            return;
+        }
+
+        // remove from cache
+        await this.cacheManager.delete(cacheKey);
+
+        // set cache for wait verifying
+        const cacheExpireTime = 60 * 1000 * 5; // 5 minute
+        const cacheKeySong = `song:${inline_message_id}:${videoId}`;
+        await this.cacheManager.set<Song>(cacheKeySong, song, cacheExpireTime);
     }
 
     @On('edited_message')
@@ -661,16 +735,15 @@ export class PlaybackTelegramController {
             return;
         }
 
-        // get the song detail
-        const song = await this.ytmusicService.getSong(videoId);
-
-        // check song is already in queue
-        if (queues.find((q) => q.url === videoId)) {
+        // get from cache
+        const cacheKey = `song:${messageInlineID}:${videoId}`;
+        const cachedSong = await this.cacheManager.get<Song>(cacheKey);
+        if (!cachedSong) {
             await ctx.telegram.editMessageText(
                 undefined,
                 undefined,
                 messageInlineID,
-                `🔁 "<i>${song.name} by ${song.artist.name}</i>" is already in the queue.`,
+                `🔗 This link has expired. Please try generating a new one.`,
                 {
                     parse_mode: 'HTML',
                 },
@@ -678,8 +751,25 @@ export class PlaybackTelegramController {
             return;
         }
 
-        const songCombined = `${song.name} - ${song.artist.name} [${formatDuration(
-            song.duration || 0,
+        // // get the song detail
+        // const song = await this.ytmusicService.getSong(videoId);
+
+        // check song is already in queue
+        if (queues.find((q) => q.url === videoId)) {
+            await ctx.telegram.editMessageText(
+                undefined,
+                undefined,
+                messageInlineID,
+                `🔁 "<i>${cachedSong.name} by ${cachedSong.artist.name}</i>" is already in the queue.`,
+                {
+                    parse_mode: 'HTML',
+                },
+            );
+            return;
+        }
+
+        const songCombined = `${cachedSong.name} - ${cachedSong.artist.name} [${formatDuration(
+            cachedSong.duration || 0,
         )}]`;
 
         await this.playbackService.addToQueue(roomId, videoId, songCombined);
@@ -701,6 +791,9 @@ export class PlaybackTelegramController {
                 parse_mode: 'HTML',
             },
         );
+
+        // remove from cache
+        await this.cacheManager.delete(cacheKey);
 
         // emit add to queue
         this.gateway.addToQueueCommand(roomId, videoId);

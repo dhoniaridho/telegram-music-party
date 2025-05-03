@@ -7,10 +7,21 @@ import { ENV } from './config/env';
 import { PrismaService } from './platform/prisma.service';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { CacheModule } from '@nestjs/cache-manager';
+import Keyv from 'keyv';
+import KeyvRedis, { RedisClientType } from '@keyv/redis';
+import { KeyvProvider } from './providers/keyv.provider';
 
 @Global()
 @Module({
     imports: [
+        CacheModule.registerAsync({
+            isGlobal: true,
+            inject: ['KEYV_CACHE'],
+            useFactory: (redisClient: RedisClientType) => ({
+                store: new Keyv({ store: new KeyvRedis(redisClient) }),
+            }),
+        }),
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'public'),
         }),
@@ -20,7 +31,7 @@ import { join } from 'path';
         }),
     ],
     controllers: [AppController],
-    providers: [AppService, PrismaService],
-    exports: [PrismaService],
+    providers: [AppService, PrismaService, KeyvProvider],
+    exports: [PrismaService, 'KEYV_CACHE'],
 })
 export class AppModule {}

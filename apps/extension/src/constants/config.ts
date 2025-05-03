@@ -1,0 +1,1 @@
+export const DEFAULT_PARTY_URL = 'https://party.dhoniaridho.com';

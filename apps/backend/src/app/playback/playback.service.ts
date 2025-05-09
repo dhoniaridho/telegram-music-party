@@ -221,6 +221,17 @@ export class PlaybackService {
         });
     }
 
+    async setFeature(roomId: string, feature: string, value: number | boolean) {
+        await this.prisma.feature.update({
+            where: {
+                roomId,
+            },
+            data: {
+                [feature]: value,
+            },
+        });
+    }
+
     async sendMessage(chatId: string, message: string) {
         await this.bot.telegram.sendMessage(chatId, message, {
             parse_mode: 'Markdown',

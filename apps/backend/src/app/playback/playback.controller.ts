@@ -23,6 +23,7 @@ import { firstValueFrom } from 'rxjs';
 import { Inject } from '@nestjs/common';
 import { Song } from 'src/types/cache.type';
 import Keyv from 'keyv';
+import { validateConfigNumber } from 'src/helpers/validation';
 @Update()
 export class PlaybackTelegramController {
     constructor(
@@ -546,6 +547,205 @@ export class PlaybackTelegramController {
         // send message
         await ctx.reply(
             randomText[Math.floor(Math.random() * randomText.length)],
+        );
+    }
+
+    @Command('config')
+    async getFeature(
+        @Ctx()
+        ctx: Context & {
+            message: { text: string };
+        },
+    ) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        const feature = room.Feature;
+
+        if (!feature) {
+            await ctx.reply('No feature found');
+            return;
+        }
+
+        // only admin can see this
+        // if not in private chat
+        if (ctx.chat?.type !== 'private') {
+            // only admins can register & unregister
+            const userId = ctx.from?.id || 0;
+            const chatMember = await ctx.getChatMember(userId);
+            const isAdmin = ['administrator', 'creator'].includes(
+                chatMember?.status,
+            );
+            if (!isAdmin) {
+                await ctx.reply('⚠️ This feature is available for admin only.');
+                return;
+            }
+        }
+
+        await ctx.reply(
+            [
+                '🎛️ Current Feature: \n',
+                `Minimum Votes: ${feature.minimumVotes}`,
+                `Next Command: ${feature.nextCommand}`,
+                `Next Only Admin: ${feature.nextOnlyAdmin}`,
+                `Previous Command: ${feature.previousCommand}`,
+                `Previous Only Admin: ${feature.previousOnlyAdmin}`,
+                `Mute Command: ${feature.muteCommand}`,
+                `Unmute Command: ${feature.unmuteCommand}`,
+                `Volume Command: ${feature.volumeCommand}`,
+                `Max Queue Size: ${feature.maxQueueSize}`,
+            ].join('\n'),
+        );
+    }
+
+    @Command('set')
+    async setFeature(
+        @Ctx()
+        ctx: Context & {
+            message: { text: string };
+        },
+    ) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        // only admin can do this
+        if (ctx.chat?.type !== 'private') {
+            // only admins can register & unregister
+            const userId = ctx.from?.id || 0;
+            const chatMember = await ctx.getChatMember(userId);
+            const isAdmin = ['administrator', 'creator'].includes(
+                chatMember?.status,
+            );
+            if (!isAdmin) {
+                await ctx.reply('⚠️ This feature is available for admin only.');
+                return;
+            }
+        }
+
+        const args = ctx.message.text.split(' ').slice(1);
+
+        const availableCommands = {
+            minimumVotes: 'Minimum Votes',
+            nextCommand: 'Next Command',
+            nextOnlyAdmin: 'Next Only Admin',
+            previousCommand: 'Previous Command',
+            previousOnlyAdmin: 'Previous Only Admin',
+            muteCommand: 'Mute Command',
+            unmuteCommand: 'Unmute Command',
+            volumeCommand: 'Volume Command',
+            maxQueueSize: 'Max Queue Size',
+        };
+
+        if (
+            args.length < 2 ||
+            !Object.keys(availableCommands).includes(args[0])
+        ) {
+            await ctx.reply(
+                [
+                    '⚠️ Please provide a command and a value.\n',
+                    `Usage: /set <command> <value>\n`,
+                    `Available commands:\n`,
+                    // ...availableCommands.map((c) => `- ${c}`),
+                    ...Object.entries(availableCommands).map(
+                        ([key]) => `- ${key}`,
+                    ),
+                    `\nExample: /set minimumVotes 5`,
+                    `\nNote: Only admins can set the feature.`,
+                ].join('\n'),
+            );
+            return;
+        }
+
+        const command = args[0];
+        const value = args[1];
+
+        let featureName: string = '';
+        let featureValue: boolean | number = false;
+
+        switch (command) {
+            case 'minimumVotes':
+            case 'maxQueueSize': {
+                const errMsg = validateConfigNumber(value);
+                if (errMsg !== '') {
+                    await ctx.reply(errMsg);
+                    return;
+                }
+
+                featureName = availableCommands[command];
+                featureValue = parseInt(value);
+
+                break;
+            }
+            case 'nextCommand':
+            case 'nextOnlyAdmin':
+            case 'previousCommand':
+            case 'previousOnlyAdmin':
+            case 'muteCommand':
+            case 'unmuteCommand':
+            case 'volumeCommand': {
+                featureName = availableCommands[command];
+                featureValue = value === 'true' ? true : false;
+                break;
+            }
+        }
+
+        await this.playbackService.setFeature(room.id, command, featureValue);
+
+        await ctx.reply(`Set ${featureName} to ${featureValue}`);
+    }
+
+    @Command('info')
+    async getRoomInfo(
+        @Ctx()
+        ctx: Context & {
+            message: { text: string };
+        },
+    ) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('No chat id');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found');
+            return;
+        }
+
+        // load queue
+        const queues = await this.playbackService.getQueues(room.id);
+
+        await ctx.reply(
+            [
+                '🎛️ Current Room Info: \n',
+                `🆔 Room: \`${room.id}\``,
+                `💬 Chat ID: ${room.chatId}`,
+                `🎧 Queue: ${queues.length} songs`,
+                `🖥️ Devices Count: ${room.Devices.length}`,
+                `📅 Created At: ${room.createdAt.toLocaleString()}`,
+            ].join('\n'),
+            {
+                parse_mode: 'MarkdownV2',
+            },
         );
     }
 

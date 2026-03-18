@@ -322,26 +322,19 @@ function getAppInstance<T>() {
 }
 
 function getQueueInstance() {
-    const q = document.querySelector("#queue");
-    (globalThis as any).queue = q;
-
-    setInterval(() => {
-        (globalThis as any).queue = document.querySelector(
-            "#queue"
-        ) as Element & {
-            dispatch: (action: any) => void;
-            queue: {
+    const q = document.querySelector("#queue") as Element & {
+        dispatch: (action: any) => void;
+        queue: {
+            store: {
                 store: {
-                    store: {
-                        dispatch: (action: any) => void;
-                        getState: () => any;
-                    };
+                    dispatch: (action: any) => void;
+                    getState: () => any;
                 };
             };
         };
-    }, 300);
-
-    return (globalThis as any).queue;
+    };
+    (globalThis as any).queue = q;
+    return q;
 }
 
 async function addQueue(videoIds: string) {

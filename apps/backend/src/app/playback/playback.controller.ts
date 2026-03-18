@@ -769,7 +769,7 @@ export class PlaybackTelegramController {
 
             const cacheExpireTime = 60 * 1000; // 1 minute
 
-            const videoIds: string[] = [];
+            const videoIds = new Set<string>();
 
             const cacheKey = `songs:${inlineQueryID}`;
             const cachedData = await this.cacheManager.get<Song>(cacheKey);
@@ -789,9 +789,9 @@ export class PlaybackTelegramController {
             await ctx.answerInlineQuery(
                 songs
                     .filter((row) => {
-                        if (videoIds.includes(row.videoId)) return false;
+                        if (videoIds.has(row.videoId)) return false;
 
-                        videoIds.push(row.videoId);
+                        videoIds.add(row.videoId);
                         return true;
                     })
                     .map(

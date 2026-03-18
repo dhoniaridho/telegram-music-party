@@ -24,22 +24,26 @@ model Room {
     Devices  Device[]
     Votes    Vote[]
     Feature Feature?
+
+    @@index([chatId])
 }
 
 model Device {
     id          String   @id @default(uuid())
     roomId      String
-    room        Room     @relation(fields: [roomId], references: [id])
+    room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
     name        String
     fingerprint String
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
+
+    @@index([fingerprint])
 }
 
 model Queue {
     id        String    @id @default(uuid())
     roomId    String
-    room      Room      @relation(fields: [roomId], references: [id])
+    room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
     title     String
     url       String
     createdAt DateTime? @default(now())
@@ -49,7 +53,7 @@ model Queue {
 model Vote {
     id        String   @id @default(uuid())
     roomId    String
-    room      Room     @relation(fields: [roomId], references: [id])
+    room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
     userId    String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -58,7 +62,7 @@ model Vote {
 model Feature {
     id                String   @id @default(uuid())
     roomId            String   @unique
-    room              Room     @relation(fields: [roomId], references: [id])
+    room              Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
     minimumVotes      Int      @default(5)
     nextCommand       Boolean  @default(false)
     nextOnlyAdmin     Boolean  @default(true)

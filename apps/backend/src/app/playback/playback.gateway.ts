@@ -165,13 +165,10 @@ export class PlaybackGateway {
         const queue = await this.playbackService.getQueue(data.roomId);
 
         if (queue && queue.url === data.videoId) {
-            if (queue.url === data.videoId) {
-                // delete song
-                await this.playbackService.removeQueue(
-                    data.roomId,
-                    data.videoId,
-                );
-            }
+            await this.playbackService.removeQueue(
+                data.roomId,
+                data.videoId,
+            );
         }
 
         // clear votes

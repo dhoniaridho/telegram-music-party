@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Queue } from '@prisma/client';
+import { Feature as RoomFeature, Queue } from '@prisma/client';
 import { InjectBot } from 'nestjs-telegraf';
 import { PrismaService } from 'src/platform/prisma.service';
 import { Context, Markup, Telegraf } from 'telegraf';
+import { InlineKeyboardButton } from 'telegraf/typings/core/types/typegram';
 
 @Injectable()
 export class PlaybackService {
@@ -117,6 +118,9 @@ export class PlaybackService {
         return this.prisma.room.findFirst({
             where: {
                 id: roomId,
+            },
+            include: {
+                Feature: true,
             },
         });
     }
@@ -252,15 +256,36 @@ export class PlaybackService {
         message: string,
         imageUrl?: string,
     ) {
+        const room = await this.getRoomByChatId(chatId);
+        const feature = room?.Feature;
+        const rows: InlineKeyboardButton[][] = [];
+        if (feature?.nextCommand) {
+            rows.push([
+                Markup.button.callback('🗳 Vote next', 'menu:vote_next'),
+                Markup.button.callback(
+                    feature.nextOnlyAdmin ? '⏭ Next (admins)' : '⏭ Next',
+                    'menu:next',
+                ),
+            ]);
+        }
+        const audioControls: InlineKeyboardButton[] = [];
+        if (feature?.volumeCommand) {
+            audioControls.push(
+                Markup.button.callback('🔊 Volume', 'menu:volume'),
+            );
+        }
+        if (feature?.muteCommand) {
+            audioControls.push(Markup.button.callback('🔇 Mute', 'menu:mute'));
+        }
+        if (feature?.unmuteCommand) {
+            audioControls.push(
+                Markup.button.callback('🔈 Unmute', 'menu:unmute'),
+            );
+        }
+        if (audioControls.length) rows.push(audioControls);
         const options = {
             parse_mode: 'Markdown' as const,
-            ...Markup.inlineKeyboard([
-                [
-                    Markup.button.callback('🗳 Vote next', 'menu:vote_next'),
-                    Markup.button.callback('⏭ Next', 'menu:next'),
-                ],
-                [Markup.button.callback('🔊 Volume', 'menu:volume')],
-            ]),
+            ...Markup.inlineKeyboard(rows),
         };
         if (imageUrl) {
             await this.bot.telegram.sendPhoto(chatId, imageUrl, {
@@ -292,7 +317,10 @@ export class PlaybackService {
                 message,
                 {
                     parse_mode: 'Markdown',
-                    ...this.getVolumeControlsKeyboard(chatId),
+                    ...this.getVolumeControlsKeyboard(
+                        chatId,
+                        (await this.getRoomByChatId(chatId))?.Feature,
+                    ),
                 },
             );
             return true;
@@ -311,15 +339,20 @@ export class PlaybackService {
 
     getVolumeControlsKeyboard(
         chatId: string,
+        feature?: RoomFeature | null,
     ): ReturnType<typeof Markup.inlineKeyboard> {
-        return Markup.inlineKeyboard([
-            this.getVolumeButtons(chatId),
-            [
-                Markup.button.callback('🔇 Mute', 'menu:mute'),
-                Markup.button.callback('🔈 Unmute', 'menu:unmute'),
-            ],
-            [Markup.button.callback('🎛 All controls', 'menu:home')],
-        ]);
+        const rows: InlineKeyboardButton[][] = [];
+        if (feature?.volumeCommand) rows.push(this.getVolumeButtons(chatId));
+        const audio: InlineKeyboardButton[] = [];
+        if (feature?.muteCommand) {
+            audio.push(Markup.button.callback('🔇 Mute', 'menu:mute'));
+        }
+        if (feature?.unmuteCommand) {
+            audio.push(Markup.button.callback('🔈 Unmute', 'menu:unmute'));
+        }
+        if (audio.length) rows.push(audio);
+        rows.push([Markup.button.callback('🎛 All controls', 'menu:home')]);
+        return Markup.inlineKeyboard(rows);
     }
 
     private getVolumeButtons(chatId: string) {

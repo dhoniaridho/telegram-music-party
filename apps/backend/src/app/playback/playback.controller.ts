@@ -55,41 +55,78 @@ export class PlaybackTelegramController {
         await this.showHomeMenu(ctx);
     }
 
-    private homeMenuKeyboard(chatId: string) {
-        return Markup.inlineKeyboard([
-            [
+    private homeMenuKeyboard(chatId: string, feature?: RoomFeature | null) {
+        const rows: InlineKeyboardButton[][] = [];
+        if (feature) {
+            rows.push([
                 Markup.button.callback('▶️ Play', 'menu:play'),
                 Markup.button.callback('⏸ Pause', 'menu:pause'),
-            ],
-            [
-                Markup.button.callback('⏮ Previous', 'menu:prev'),
-                Markup.button.callback('⏭ Next', 'menu:next'),
-            ],
-            [
+            ]);
+            const navigation: InlineKeyboardButton[] = [];
+            if (feature.previousCommand) {
+                navigation.push(
+                    Markup.button.callback(
+                        feature.previousOnlyAdmin
+                            ? '⏮ Previous (admins)'
+                            : '⏮ Previous',
+                        'menu:prev',
+                    ),
+                );
+            }
+            if (feature.nextCommand) {
+                navigation.push(
+                    Markup.button.callback(
+                        feature.nextOnlyAdmin ? '⏭ Next (admins)' : '⏭ Next',
+                        'menu:next',
+                    ),
+                );
+            }
+            if (navigation.length) rows.push(navigation);
+            rows.push([
                 Markup.button.callback('📋 Queue', 'menu:queue'),
                 Markup.button.callback('🖥 Devices', 'menu:devices'),
-            ],
-            [
-                Markup.button.callback('🗳 Vote to skip', 'menu:vote_next'),
-                Markup.button.callback('🎤 Lyrics', 'menu:lyrics'),
-            ],
-            this.volumeButtons(chatId),
-            [
-                Markup.button.callback('🔇 Mute', 'menu:mute'),
-                Markup.button.callback('🔈 Unmute', 'menu:unmute'),
-            ],
-            [
+            ]);
+            const discovery: InlineKeyboardButton[] = [];
+            if (feature.nextCommand) {
+                discovery.push(
+                    Markup.button.callback('🗳 Vote to skip', 'menu:vote_next'),
+                );
+            }
+            discovery.push(Markup.button.callback('🎤 Lyrics', 'menu:lyrics'));
+            rows.push(discovery);
+            if (feature.volumeCommand) rows.push(this.volumeButtons(chatId));
+            const audio: InlineKeyboardButton[] = [];
+            if (feature.muteCommand) {
+                audio.push(Markup.button.callback('🔇 Mute', 'menu:mute'));
+            }
+            if (feature.unmuteCommand) {
+                audio.push(Markup.button.callback('🔈 Unmute', 'menu:unmute'));
+            }
+            if (audio.length) rows.push(audio);
+            rows.push([
                 Markup.button.callback('ℹ️ Room info', 'menu:info'),
                 Markup.button.callback('⚙️ Settings', 'menu:config'),
-            ],
-            [
-                Markup.button.callback('🚀 Setup', 'menu:setup'),
-                Markup.button.callback('❔ Help', 'menu:help'),
-            ],
+            ]);
+        } else {
+            rows.push([
+                Markup.button.callback(
+                    '📝 Register this group',
+                    'menu:register',
+                ),
+            ]);
+        }
+        rows.push([
+            Markup.button.callback('🚀 Setup', 'menu:setup'),
+            Markup.button.callback('❔ Help', 'menu:help'),
         ]);
+        return Markup.inlineKeyboard(rows);
     }
 
     private async showHomeMenu(ctx: Context) {
+        const chatId = ctx.chat?.id.toString() ?? '';
+        const room = chatId
+            ? await this.playbackService.getRoomByChatId(chatId)
+            : null;
         await ctx.reply(
             [
                 '🎉 YouTube Music Party',
@@ -97,7 +134,7 @@ export class PlaybackTelegramController {
                 'Control playback, check the queue, and manage your room from these buttons.',
                 `Use this menu in the registered group chat. Add songs by mentioning the bot with a search, like ${this.botMention(ctx)} song name.`,
             ].join('\n'),
-            this.homeMenuKeyboard(ctx.chat?.id.toString() ?? ''),
+            this.homeMenuKeyboard(chatId, room?.Feature),
         );
     }
 
@@ -137,10 +174,7 @@ export class PlaybackTelegramController {
     }
 
     @On('text')
-    async onBotMention(
-        @Ctx() ctx: Context,
-        @Next() next: () => Promise<void>,
-    ) {
+    async onBotMention(@Ctx() ctx: Context, @Next() next: () => Promise<void>) {
         const message = ctx.message;
         const username = ctx.botInfo?.username;
         if (!message || !('text' in message) || !username) {
@@ -163,7 +197,13 @@ export class PlaybackTelegramController {
         }
 
         const request = message.text
-            .replace(new RegExp(mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '')
+            .replace(
+                new RegExp(
+                    mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+                    'gi',
+                ),
+                '',
+            )
             .trim()
             .toLowerCase();
         const simpleRequest = request.replace(/[.!?]+$/g, '').trim();
@@ -172,7 +212,10 @@ export class PlaybackTelegramController {
             await this.help(ctx);
             return;
         }
-        const directActions: Record<string, (context: Context) => Promise<void>> = {
+        const directActions: Record<
+            string,
+            (context: Context) => Promise<void>
+        > = {
             play: this.play.bind(this),
             start: this.play.bind(this),
             pause: this.pause.bind(this),
@@ -211,7 +254,9 @@ export class PlaybackTelegramController {
         );
     }
 
-    @Action(/^menu:(home|setup|register|help|play|pause|next|prev|queue|devices|vote_next|lyrics|volume|volume_up|volume_down|mute|unmute|info|config)$/)
+    @Action(
+        /^menu:(home|setup|register|help|play|pause|next|prev|queue|devices|vote_next|lyrics|volume|volume_up|volume_down|mute|unmute|info|config)$/,
+    )
     async handleMenuAction(
         @Ctx()
         ctx: Context<UpdateType.CallbackQueryUpdate<CallbackQuery>> & {
@@ -244,7 +289,12 @@ export class PlaybackTelegramController {
                     `5. Add songs here by mentioning ${this.botMention(ctx)} followed by a song name.`,
                 ].join('\n'),
                 Markup.inlineKeyboard([
-                    [Markup.button.callback('📝 Register this group', 'menu:register')],
+                    [
+                        Markup.button.callback(
+                            '📝 Register this group',
+                            'menu:register',
+                        ),
+                    ],
                     [Markup.button.callback('🎛 Open controls', 'menu:home')],
                 ]),
             );
@@ -257,9 +307,12 @@ export class PlaybackTelegramController {
         }
         if (action === 'register') {
             if (ctx.chat?.type === 'private') {
-                await ctx.answerCbQuery('Run /register in the group you want to connect.', {
-                    show_alert: true,
-                });
+                await ctx.answerCbQuery(
+                    'Run /register in the group you want to connect.',
+                    {
+                        show_alert: true,
+                    },
+                );
                 return;
             }
             await ctx.answerCbQuery();
@@ -280,8 +333,12 @@ export class PlaybackTelegramController {
             volume_down: this.volumeDown.bind(this),
             mute: this.mute.bind(this),
             unmute: this.unmute.bind(this),
-            info: this.getRoomInfo.bind(this) as (context: Context) => Promise<void>,
-            config: this.getFeature.bind(this) as (context: Context) => Promise<void>,
+            info: this.getRoomInfo.bind(this) as (
+                context: Context,
+            ) => Promise<void>,
+            config: this.getFeature.bind(this) as (
+                context: Context,
+            ) => Promise<void>,
         };
         const callbackMessage =
             'message' in ctx.update.callback_query
@@ -525,12 +582,12 @@ export class PlaybackTelegramController {
         }
 
         // check if feature is enabled
-        if (room.Feature && room.Feature.nextCommand !== true) {
+        if (room.Feature?.nextCommand !== true) {
             await ctx.reply('⚠️ This feature is currently disabled.');
             return;
         }
 
-        if (room.Feature && room.Feature.nextOnlyAdmin === true) {
+        if (room.Feature?.nextOnlyAdmin === true) {
             // if not in private chat
             if (ctx.chat?.type !== 'private') {
                 // only admins can register & unregister
@@ -566,12 +623,12 @@ export class PlaybackTelegramController {
         }
 
         // check if feature is enabled
-        if (room.Feature && room.Feature.previousCommand !== true) {
+        if (room.Feature?.previousCommand !== true) {
             await ctx.reply('⚠️ This feature is currently disabled.');
             return;
         }
 
-        if (room.Feature && room.Feature.previousOnlyAdmin === true) {
+        if (room.Feature?.previousOnlyAdmin === true) {
             // if not in private chat
             if (ctx.chat?.type !== 'private') {
                 // only admins can register & unregister
@@ -607,7 +664,7 @@ export class PlaybackTelegramController {
         }
 
         // check if feature is enabled
-        if (room.Feature && room.Feature.muteCommand !== true) {
+        if (room.Feature?.muteCommand !== true) {
             await ctx.reply('⚠️ This feature is currently disabled.');
             return;
         }
@@ -630,7 +687,7 @@ export class PlaybackTelegramController {
         }
 
         // check if feature is enabled
-        if (room.Feature && room.Feature.unmuteCommand !== true) {
+        if (room.Feature?.unmuteCommand !== true) {
             await ctx.reply('⚠️ This feature is currently disabled.');
             return;
         }
@@ -670,7 +727,7 @@ export class PlaybackTelegramController {
         }
 
         // check if feature is enabled
-        if (room.Feature && room.Feature.volumeCommand !== true) {
+        if (room.Feature?.volumeCommand !== true) {
             await ctx.reply('⚠️ This feature is currently disabled.');
             return;
         }
@@ -693,7 +750,7 @@ export class PlaybackTelegramController {
         }
 
         // check if feature is enabled
-        if (room.Feature && room.Feature.volumeCommand !== true) {
+        if (room.Feature?.volumeCommand !== true) {
             await ctx.reply('⚠️ This feature is currently disabled.');
             return;
         }
@@ -711,7 +768,9 @@ export class PlaybackTelegramController {
 
         const room = await this.playbackService.getRoomByChatId(chatId);
         if (!room) {
-            await ctx.reply('No room found. An admin can link this chat with /register.');
+            await ctx.reply(
+                'No room found. An admin can link this chat with /register.',
+            );
             return;
         }
 
@@ -727,10 +786,16 @@ export class PlaybackTelegramController {
             ].join('\n'),
             {
                 parse_mode: 'HTML',
-                ...this.playbackService.getVolumeControlsKeyboard(chatId),
+                ...this.playbackService.getVolumeControlsKeyboard(
+                    chatId,
+                    room.Feature,
+                ),
             },
         );
-        this.playbackService.rememberVolumePanelMessage(chatId, panel.message_id);
+        this.playbackService.rememberVolumePanelMessage(
+            chatId,
+            panel.message_id,
+        );
     }
 
     @Command('devices')
@@ -751,7 +816,12 @@ export class PlaybackTelegramController {
             await ctx.reply(
                 'No browsers are connected yet. Open YouTube Music and join this room with the extension.',
                 Markup.inlineKeyboard([
-                    [Markup.button.callback('🔄 Refresh devices', 'menu:devices')],
+                    [
+                        Markup.button.callback(
+                            '🔄 Refresh devices',
+                            'menu:devices',
+                        ),
+                    ],
                     [Markup.button.callback('🎛 Controls', 'menu:home')],
                 ]),
             );
@@ -772,8 +842,16 @@ export class PlaybackTelegramController {
             {
                 parse_mode: 'HTML',
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback('🔄 Refresh devices', 'menu:devices')],
-                    [Markup.button.callback('ℹ️ Room info', 'menu:info'), Markup.button.callback('🎛 Controls', 'menu:home')],
+                    [
+                        Markup.button.callback(
+                            '🔄 Refresh devices',
+                            'menu:devices',
+                        ),
+                    ],
+                    [
+                        Markup.button.callback('ℹ️ Room info', 'menu:info'),
+                        Markup.button.callback('🎛 Controls', 'menu:home'),
+                    ],
                 ]),
             },
         );
@@ -790,6 +868,11 @@ export class PlaybackTelegramController {
         const room = await this.playbackService.getDevicesByChatId(chatId);
         if (!room) {
             await ctx.reply('No room found');
+            return;
+        }
+
+        if (room.Feature?.nextCommand !== true) {
+            await ctx.reply('⚠️ Voting to skip is currently disabled.');
             return;
         }
 
@@ -891,13 +974,7 @@ export class PlaybackTelegramController {
                 Markup.button.callback('+', 'config:adjust:maxQueueSize:1'),
             ],
             [toggle('/next', 'nextCommand', feature.nextCommand)],
-            [
-                toggle(
-                    'Next admin-only',
-                    'nextOnlyAdmin',
-                    feature.nextOnlyAdmin,
-                ),
-            ],
+            [toggle('Next admin-only', 'nextOnlyAdmin', feature.nextOnlyAdmin)],
             [toggle('/prev', 'previousCommand', feature.previousCommand)],
             [
                 toggle(
@@ -986,9 +1063,12 @@ export class PlaybackTelegramController {
         if (ctx.chat?.type !== 'private') {
             const member = await ctx.getChatMember(ctx.from?.id || 0);
             if (!['administrator', 'creator'].includes(member.status)) {
-                await ctx.answerCbQuery('Only room admins can change settings.', {
-                    show_alert: true,
-                });
+                await ctx.answerCbQuery(
+                    'Only room admins can change settings.',
+                    {
+                        show_alert: true,
+                    },
+                );
                 return;
             }
         }
@@ -1197,7 +1277,10 @@ export class PlaybackTelegramController {
             {
                 parse_mode: 'HTML',
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback('📋 View queue', 'menu:queue'), Markup.button.callback('🖥 Devices', 'menu:devices')],
+                    [
+                        Markup.button.callback('📋 View queue', 'menu:queue'),
+                        Markup.button.callback('🖥 Devices', 'menu:devices'),
+                    ],
                     [Markup.button.callback('🎛 Controls', 'menu:home')],
                 ]),
             },
@@ -1625,20 +1708,25 @@ export class PlaybackTelegramController {
                                         ? `<i>${safeValue}</i>`
                                         : safeValue;
                                 })
-                                .join(' - ')}"\n   👤 Added by: ${d.addedBy
-                                ? d.addedBy
-                                      .replace(/&/g, '&amp;')
-                                      .replace(/</g, '&lt;')
-                                      .replace(/>/g, '&gt;')
-                                      .replace(/"/g, '&quot;')
-                                : 'unknown'}`,
+                                .join(' - ')}"\n   👤 Added by: ${
+                                d.addedBy
+                                    ? d.addedBy
+                                          .replace(/&/g, '&amp;')
+                                          .replace(/</g, '&lt;')
+                                          .replace(/>/g, '&gt;')
+                                          .replace(/"/g, '&quot;')
+                                    : 'unknown'
+                            }`,
                     )
                     .join('\n')}`,
             ].join('\n'),
             {
                 parse_mode: 'HTML',
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback('🔄 Refresh queue', 'menu:queue'), Markup.button.callback('⏭ Skip', 'menu:next')],
+                    [Markup.button.callback('🔄 Refresh queue', 'menu:queue')],
+                    ...(room.Feature?.nextCommand
+                        ? [[Markup.button.callback('⏭ Skip', 'menu:next')]]
+                        : []),
                     [Markup.button.callback('🎛 Controls', 'menu:home')],
                 ]),
             },

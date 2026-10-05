@@ -37,3 +37,14 @@ A Telegram bot that allows users to play music from different sources like Spoti
 - Prisma ORM
 - Postgre SQL
 - NestJS
+
+## Releases
+
+Push any Git tag to build and publish the backend container for Linux AMD64 and ARM64. The workflow publishes it to GitHub Container Registry and creates a GitHub Release with generated notes.
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The image will be available as `ghcr.io/<owner>/<repository>:v1.0.0`.

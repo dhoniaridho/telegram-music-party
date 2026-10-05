@@ -7,6 +7,7 @@ import { Context, Markup, Telegraf } from 'telegraf';
 @Injectable()
 export class PlaybackService {
     private readonly volumePanelMessages = new Map<string, number>();
+    private readonly roomVolumes = new Map<string, number>();
 
     constructor(
         private readonly prisma: PrismaService,
@@ -246,9 +247,13 @@ export class PlaybackService {
         });
     }
 
-    async sendNowPlayingWithActions(chatId: string, message: string) {
-        await this.bot.telegram.sendMessage(chatId, message, {
-            parse_mode: 'Markdown',
+    async sendNowPlayingWithActions(
+        chatId: string,
+        message: string,
+        imageUrl?: string,
+    ) {
+        const options = {
+            parse_mode: 'Markdown' as const,
             ...Markup.inlineKeyboard([
                 [
                     Markup.button.callback('🗳 Vote next', 'menu:vote_next'),
@@ -256,7 +261,15 @@ export class PlaybackService {
                 ],
                 [Markup.button.callback('🔊 Volume', 'menu:volume')],
             ]),
-        });
+        };
+        if (imageUrl) {
+            await this.bot.telegram.sendPhoto(chatId, imageUrl, {
+                caption: message,
+                ...options,
+            });
+            return;
+        }
+        await this.bot.telegram.sendMessage(chatId, message, options);
     }
 
     async updateVolumePanelMessage(chatId: string, message: string) {
@@ -264,6 +277,10 @@ export class PlaybackService {
             /^🔊 Volume (increased|decreased)\./i.test(message) ||
             message.startsWith('🤫') ||
             message.startsWith("🎶 We're back!");
+        const volume = message.match(/Current volume:\s*(\d+(?:\.\d+)?)/i);
+        if (volume) {
+            this.roomVolumes.set(chatId, Math.min(100, Number(volume[1])));
+        }
         const messageId = this.volumePanelMessages.get(chatId);
         if (!isVolumeUpdate || messageId === undefined) return false;
 
@@ -275,17 +292,7 @@ export class PlaybackService {
                 message,
                 {
                     parse_mode: 'Markdown',
-                    ...Markup.inlineKeyboard([
-                        [
-                            Markup.button.callback('🔉 Volume down', 'menu:volume_down'),
-                            Markup.button.callback('🔊 Volume up', 'menu:volume_up'),
-                        ],
-                        [
-                            Markup.button.callback('🔇 Mute', 'menu:mute'),
-                            Markup.button.callback('🔈 Unmute', 'menu:unmute'),
-                        ],
-                        [Markup.button.callback('🎛 All controls', 'menu:home')],
-                    ]),
+                    ...this.getVolumeControlsKeyboard(chatId),
                 },
             );
             return true;
@@ -300,5 +307,31 @@ export class PlaybackService {
 
     rememberVolumePanelMessage(chatId: string, messageId: number) {
         this.volumePanelMessages.set(chatId, messageId);
+    }
+
+    getVolumeControlsKeyboard(
+        chatId: string,
+    ): ReturnType<typeof Markup.inlineKeyboard> {
+        return Markup.inlineKeyboard([
+            this.getVolumeButtons(chatId),
+            [
+                Markup.button.callback('🔇 Mute', 'menu:mute'),
+                Markup.button.callback('🔈 Unmute', 'menu:unmute'),
+            ],
+            [Markup.button.callback('🎛 All controls', 'menu:home')],
+        ]);
+    }
+
+    private getVolumeButtons(chatId: string) {
+        return [
+            Markup.button.callback('🔉 Volume down', 'menu:volume_down'),
+            ...(!this.isVolumeAtMaximum(chatId)
+                ? [Markup.button.callback('🔊 Volume up', 'menu:volume_up')]
+                : []),
+        ];
+    }
+
+    isVolumeAtMaximum(chatId: string) {
+        return (this.roomVolumes.get(chatId) ?? 0) >= 100;
     }
 }

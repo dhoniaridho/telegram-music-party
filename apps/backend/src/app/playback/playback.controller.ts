@@ -55,7 +55,7 @@ export class PlaybackTelegramController {
         await this.showHomeMenu(ctx);
     }
 
-    private homeMenuKeyboard() {
+    private homeMenuKeyboard(chatId: string) {
         return Markup.inlineKeyboard([
             [
                 Markup.button.callback('▶️ Play', 'menu:play'),
@@ -73,10 +73,7 @@ export class PlaybackTelegramController {
                 Markup.button.callback('🗳 Vote to skip', 'menu:vote_next'),
                 Markup.button.callback('🎤 Lyrics', 'menu:lyrics'),
             ],
-            [
-                Markup.button.callback('🔉 Volume −', 'menu:volume_down'),
-                Markup.button.callback('🔊 Volume +', 'menu:volume_up'),
-            ],
+            this.volumeButtons(chatId),
             [
                 Markup.button.callback('🔇 Mute', 'menu:mute'),
                 Markup.button.callback('🔈 Unmute', 'menu:unmute'),
@@ -100,8 +97,17 @@ export class PlaybackTelegramController {
                 'Control playback, check the queue, and manage your room from these buttons.',
                 `Use this menu in the registered group chat. Add songs by mentioning the bot with a search, like ${this.botMention(ctx)} song name.`,
             ].join('\n'),
-            this.homeMenuKeyboard(),
+            this.homeMenuKeyboard(ctx.chat?.id.toString() ?? ''),
         );
+    }
+
+    private volumeButtons(chatId: string) {
+        return [
+            Markup.button.callback('🔉 Volume −', 'menu:volume_down'),
+            ...(this.playbackService.isVolumeAtMaximum(chatId)
+                ? []
+                : [Markup.button.callback('🔊 Volume +', 'menu:volume_up')]),
+        ];
     }
 
     @Command('menu')
@@ -721,17 +727,7 @@ export class PlaybackTelegramController {
             ].join('\n'),
             {
                 parse_mode: 'HTML',
-                ...Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback('🔉 Volume down', 'menu:volume_down'),
-                        Markup.button.callback('🔊 Volume up', 'menu:volume_up'),
-                    ],
-                    [
-                        Markup.button.callback('🔇 Mute', 'menu:mute'),
-                        Markup.button.callback('🔈 Unmute', 'menu:unmute'),
-                    ],
-                    [Markup.button.callback('🎛 All controls', 'menu:home')],
-                ]),
+                ...this.playbackService.getVolumeControlsKeyboard(chatId),
             },
         );
         this.playbackService.rememberVolumePanelMessage(chatId, panel.message_id);

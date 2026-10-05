@@ -9,10 +9,14 @@ import { Server, Socket } from 'socket.io';
 import { PlaybackService } from './playback.service';
 import { Join } from 'src/types/playback.type';
 import { from, map } from 'rxjs';
+import { YTMusicService } from 'src/platform/yt-music.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class PlaybackGateway {
-    constructor(private readonly playbackService: PlaybackService) {}
+    constructor(
+        private readonly playbackService: PlaybackService,
+        private readonly ytmusicService: YTMusicService,
+    ) {}
     @WebSocketServer() wss: Server;
 
     // Function to emit events from the server
@@ -189,9 +193,29 @@ export class PlaybackGateway {
         }
 
         if (/^Now playing:/i.test(data.message)) {
+            let imageUrl: string | undefined;
+            const track = data.message.match(
+                /^Now playing:\s*___"?(.+?)"?___\s+by\s+(.+?)\s+🎧?$/i,
+            );
+            if (track?.[1]) {
+                try {
+                    const artist = track[2]?.trim();
+                    const query =
+                        artist && artist.toLowerCase() !== 'undefined'
+                            ? `${track[1].trim()} ${artist}`
+                            : track[1].trim();
+                    const [song] = await this.ytmusicService.searchSongs(query);
+                    if (song?.videoId) {
+                        imageUrl = `https://img.youtube.com/vi/${encodeURIComponent(song.videoId)}/default.jpg`;
+                    }
+                } catch (error) {
+                    console.warn('Could not find Now Playing artwork', error);
+                }
+            }
             await this.playbackService.sendNowPlayingWithActions(
                 room.chatId,
                 data.message,
+                imageUrl,
             );
             return;
         }

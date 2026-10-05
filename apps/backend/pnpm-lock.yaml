@@ -63,8 +63,8 @@ importers:
         specifier: ^4.16.3
         version: 4.16.3
       ytmusic-api:
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: ^5.3.1
+        version: 5.3.1
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.2.0
@@ -3973,8 +3973,8 @@ packages:
     resolution: {integrity: sha512-cYVsTjKl8b+FrnidjibDWskAv7UKOfcwaVZdp/it9n1s9fU3IkgDbhdIRKCW4JDsAlECJY0ytoVPT3sK6kideA==}
     engines: {node: '>=18'}
 
-  ytmusic-api@5.3.0:
-    resolution: {integrity: sha512-RETSp5V5Cj1OT7N4HuEpehpq/YdKlKdXbYSSYH1ks8VBN1WRRpy2CFFwZVO+kIx7nuufBqsXN4B6/nxk4GNKDw==}
+  ytmusic-api@5.3.1:
+    resolution: {integrity: sha512-a6Ro13k6GP1vj3hoPQti2hGEB8OiNWU/xs5p5J4+gA6I8MhuypJ9JRVq8G5zw/d5ugdzouOzeBta7t6o4jeSww==}
 
   zod@3.24.2:
     resolution: {integrity: sha512-lY7CDW43ECgW9u1TcT3IoXHflywfVqDYze4waEz812jR/bZ8FHDsl7pFQoSZTz5N+2NqRXs8GBwnAwo3ZNxqhQ==}
@@ -8225,7 +8225,7 @@ snapshots:
 
   yoctocolors-cjs@2.1.2: {}
 
-  ytmusic-api@5.3.0:
+  ytmusic-api@5.3.1:
     dependencies:
       '@biomejs/biome': 1.8.3
       axios: 1.8.3

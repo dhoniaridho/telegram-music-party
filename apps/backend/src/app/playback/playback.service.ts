@@ -2,21 +2,29 @@ import { Injectable } from '@nestjs/common';
 import { Queue } from '@prisma/client';
 import { InjectBot } from 'nestjs-telegraf';
 import { PrismaService } from 'src/platform/prisma.service';
-import { Context, Telegraf } from 'telegraf';
+import { Context, Markup, Telegraf } from 'telegraf';
 
 @Injectable()
 export class PlaybackService {
+    private readonly volumePanelMessages = new Map<string, number>();
+
     constructor(
         private readonly prisma: PrismaService,
         @InjectBot() private bot: Telegraf<Context>,
     ) {}
 
-    async addToQueue(roomId: string, videoId: string, title: string) {
+    async addToQueue(
+        roomId: string,
+        videoId: string,
+        title: string,
+        addedBy?: string,
+    ) {
         await this.prisma.queue.create({
             data: {
                 roomId,
                 url: videoId,
                 title: title,
+                addedBy,
             },
         });
     }
@@ -236,5 +244,61 @@ export class PlaybackService {
         await this.bot.telegram.sendMessage(chatId, message, {
             parse_mode: 'Markdown',
         });
+    }
+
+    async sendNowPlayingWithActions(chatId: string, message: string) {
+        await this.bot.telegram.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+                [
+                    Markup.button.callback('🗳 Vote next', 'menu:vote_next'),
+                    Markup.button.callback('⏭ Next', 'menu:next'),
+                ],
+                [Markup.button.callback('🔊 Volume', 'menu:volume')],
+            ]),
+        });
+    }
+
+    async updateVolumePanelMessage(chatId: string, message: string) {
+        const isVolumeUpdate =
+            /^🔊 Volume (increased|decreased)\./i.test(message) ||
+            message.startsWith('🤫') ||
+            message.startsWith("🎶 We're back!");
+        const messageId = this.volumePanelMessages.get(chatId);
+        if (!isVolumeUpdate || messageId === undefined) return false;
+
+        try {
+            await this.bot.telegram.editMessageText(
+                chatId,
+                messageId,
+                undefined,
+                message,
+                {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard([
+                        [
+                            Markup.button.callback('🔉 Volume down', 'menu:volume_down'),
+                            Markup.button.callback('🔊 Volume up', 'menu:volume_up'),
+                        ],
+                        [
+                            Markup.button.callback('🔇 Mute', 'menu:mute'),
+                            Markup.button.callback('🔈 Unmute', 'menu:unmute'),
+                        ],
+                        [Markup.button.callback('🎛 All controls', 'menu:home')],
+                    ]),
+                },
+            );
+            return true;
+        } catch (error) {
+            const description =
+                error instanceof Error ? error.message : String(error);
+            if (description.includes('message is not modified')) return true;
+            this.volumePanelMessages.delete(chatId);
+            return false;
+        }
+    }
+
+    rememberVolumePanelMessage(chatId: string, messageId: number) {
+        this.volumePanelMessages.set(chatId, messageId);
     }
 }

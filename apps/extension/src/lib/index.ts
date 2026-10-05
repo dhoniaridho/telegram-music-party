@@ -36,14 +36,14 @@ function getPlaybackState(): {
         "#movie_player > div.html5-video-container > video"
     ) as HTMLVideoElement;
 
-    const song = document.querySelector(
-        "[class='title style-scope ytmusic-player-bar']"
-    )?.textContent as string;
+    const song =
+        document.querySelector(".title.ytmusic-player-bar")?.textContent?.trim() ||
+        "Unknown title";
 
     if (el.src) {
         return {
             song,
-            artist: document.querySelector(artist)?.textContent as string,
+            artist: getCurrentArtist(),
             state: el.paused ? "paused" : "playing",
             el,
         };
@@ -60,6 +60,22 @@ type Queue = { id: string; url: string };
 
 const artist =
     "div.content-info-wrapper.style-scope.ytmusic-player-bar > span > span.subtitle.style-scope.ytmusic-player-bar > yt-formatted-string > a";
+
+function getCurrentArtist(): string {
+    const byline = document.querySelector(".byline.ytmusic-player-bar");
+    const artists = Array.from(byline?.querySelectorAll("a") || [])
+        .map((element) => element.textContent?.trim())
+        .filter((name): name is string => Boolean(name));
+
+    if (artists.length) return artists.join(", ");
+
+    const bylineText = byline?.textContent?.trim();
+    if (bylineText) return bylineText.split("•")[0].trim();
+
+    return (
+        document.querySelector(artist)?.textContent?.trim() || "Unknown artist"
+    );
+}
 
 function play(queue?: Queue) {
     const playback = getPlaybackState();
@@ -282,21 +298,51 @@ function createButtonLeave(
     }, 2000);
 }
 
+function createButtonRoomInformation(socket: Socket) {
+    setTimeout(() => {
+        const btn = createButton({
+            children: "Room Information",
+            join: false,
+            onClick: () => {
+                const config = getConfig();
+                window.alert(
+                    [
+                        "Room Information",
+                        `Room ID: ${config.roomId || "Not joined"}`,
+                        `Party URL: ${config.partyUrl || DEFAULT_PARTY_URL}`,
+                        `Connection: ${socket.connected ? "Connected" : "Disconnected"}`,
+                    ].join("\n")
+                );
+            },
+        });
+        document
+            .querySelector(
+                "[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']"
+            )
+            ?.append(btn);
+    }, 2000);
+}
+
 function createJoinButton() {
     setTimeout(async () => {
         const btn = createButton({
             children: "Join Room",
             onClick: async () => {
-                const roomId = prompt("Enter your room ID");
-                if (!roomId) return;
-                localStorage.setItem("roomId", roomId as string);
+                const currentConfig = getConfig();
+                const roomId = prompt(
+                    "Enter your room ID",
+                    currentConfig.roomId || ""
+                );
+                if (!roomId?.trim()) return;
 
                 const partyUrl = prompt(
                     "Enter your party URL",
-                    DEFAULT_PARTY_URL
-                ) as string;
-                if (!partyUrl) return;
-                localStorage.setItem("partyUrl", partyUrl);
+                    currentConfig.partyUrl || DEFAULT_PARTY_URL
+                );
+                if (!partyUrl?.trim()) return;
+
+                localStorage.setItem("roomId", roomId.trim());
+                localStorage.setItem("partyUrl", partyUrl.trim());
 
                 if (roomId && partyUrl) {
                     window.location.reload();
@@ -388,8 +434,10 @@ async function addQueue(videoIds: string) {
 document.addEventListener("DOMContentLoaded", async () => {
     const config = getConfig();
 
-    const socket = io(config.partyUrl as string);
+    const socket = io(config.partyUrl || DEFAULT_PARTY_URL);
     const ROOM_ID = config.roomId as string;
+
+    createButtonRoomInformation(socket);
 
     if (config.partyUrl && config.roomId) {
         createButtonLeave(socket, config);

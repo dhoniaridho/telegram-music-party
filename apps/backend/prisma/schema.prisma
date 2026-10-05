@@ -42,6 +42,7 @@ model Queue {
     room      Room      @relation(fields: [roomId], references: [id])
     title     String
     url       String
+    addedBy   String?
     createdAt DateTime? @default(now())
     updatedAt DateTime  @updatedAt
 }

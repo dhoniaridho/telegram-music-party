@@ -188,6 +188,20 @@ export class PlaybackGateway {
             return;
         }
 
-        await this.playbackService.sendMessage(room.chatId, data.message);
+        if (/^Now playing:/i.test(data.message)) {
+            await this.playbackService.sendNowPlayingWithActions(
+                room.chatId,
+                data.message,
+            );
+            return;
+        }
+
+        const panelUpdated = await this.playbackService.updateVolumePanelMessage(
+            room.chatId,
+            data.message,
+        );
+        if (!panelUpdated) {
+            await this.playbackService.sendMessage(room.chatId, data.message);
+        }
     }
 }

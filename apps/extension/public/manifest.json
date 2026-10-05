@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "YouTube Music Party",
-    "version": "1.3.1",
-    "description": "Control YouTube playback from a popup or keyboard shortcuts.",
+    "version": "1.3.3",
+    "description": "Guide for connecting YouTube Music to a Telegram Music Party.",
     "permissions": ["activeTab", "scripting", "tabs", "storage"],
     "host_permissions": ["https://music.youtube.com/*"],
     "action": {
@@ -10,7 +10,6 @@
     },
     "content_scripts": [
         {
-        
             "matches": ["https://music.youtube.com/*"],
             "js": ["content.js"],
             "run_at": "document_start",

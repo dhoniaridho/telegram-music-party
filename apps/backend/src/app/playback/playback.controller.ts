@@ -6,6 +6,7 @@ import {
     Action,
     Update,
     InlineQuery,
+    Next,
 } from 'nestjs-telegraf';
 import { Context, Markup, NarrowedContext } from 'telegraf';
 import { PlaybackGateway } from './playback.gateway';
@@ -15,6 +16,7 @@ import {
     InlineQueryResult,
     Update as UpdateType,
 } from 'telegraf/typings/core/types/typegram';
+import { Feature as RoomFeature } from '@prisma/client';
 import { PlaybackService } from './playback.service';
 import { getRandomHumanReadable } from '@marianmeres/random-human-readable';
 import { YTMusicService } from 'src/platform/yt-music.service';
@@ -33,32 +35,268 @@ export class PlaybackTelegramController {
         private readonly ytmusicService: YTMusicService,
     ) {}
 
+    private async fetchSongSummary(videoId: string): Promise<Song> {
+        const song = await this.ytmusicService.getSong(videoId);
+        return {
+            videoId: song.videoId,
+            name: song.name,
+            artist: song.artist,
+            duration: song.duration,
+        };
+    }
+
+    private botMention(ctx: Context): string {
+        const username = ctx.botInfo?.username;
+        return username ? `@${username}` : 'this bot';
+    }
+
     @Start()
     async start(@Ctx() ctx: Context) {
-        const instructions = [
-            'Create a room by typing /register',
-            'Copy the room id',
-            'Open firefox',
-            'Download extension https://addons.mozilla.org/en-US/firefox/addon/yt-music-party/',
-            'Enable extension',
-            'Open Extension',
-            'Insert room id',
-            'Go to https://music.youtube.com',
-            'Add queue by mention @xmsc_bot followed by [music name] here',
-            'Then, run /play in the group chat to play the music from the queue',
-        ];
+        await this.showHomeMenu(ctx);
+    }
 
-        await ctx.reply(instructions.join('\n'));
+    private homeMenuKeyboard() {
+        return Markup.inlineKeyboard([
+            [
+                Markup.button.callback('▶️ Play', 'menu:play'),
+                Markup.button.callback('⏸ Pause', 'menu:pause'),
+            ],
+            [
+                Markup.button.callback('⏮ Previous', 'menu:prev'),
+                Markup.button.callback('⏭ Next', 'menu:next'),
+            ],
+            [
+                Markup.button.callback('📋 Queue', 'menu:queue'),
+                Markup.button.callback('🖥 Devices', 'menu:devices'),
+            ],
+            [
+                Markup.button.callback('🗳 Vote to skip', 'menu:vote_next'),
+                Markup.button.callback('🎤 Lyrics', 'menu:lyrics'),
+            ],
+            [
+                Markup.button.callback('🔉 Volume −', 'menu:volume_down'),
+                Markup.button.callback('🔊 Volume +', 'menu:volume_up'),
+            ],
+            [
+                Markup.button.callback('🔇 Mute', 'menu:mute'),
+                Markup.button.callback('🔈 Unmute', 'menu:unmute'),
+            ],
+            [
+                Markup.button.callback('ℹ️ Room info', 'menu:info'),
+                Markup.button.callback('⚙️ Settings', 'menu:config'),
+            ],
+            [
+                Markup.button.callback('🚀 Setup', 'menu:setup'),
+                Markup.button.callback('❔ Help', 'menu:help'),
+            ],
+        ]);
+    }
+
+    private async showHomeMenu(ctx: Context) {
+        await ctx.reply(
+            [
+                '🎉 YouTube Music Party',
+                '',
+                'Control playback, check the queue, and manage your room from these buttons.',
+                `Use this menu in the registered group chat. Add songs by mentioning the bot with a search, like ${this.botMention(ctx)} song name.`,
+            ].join('\n'),
+            this.homeMenuKeyboard(),
+        );
+    }
+
+    @Command('menu')
+    async menu(@Ctx() ctx: Context) {
+        await this.showHomeMenu(ctx);
+    }
+
+    @Command('help')
+    async help(@Ctx() ctx: Context) {
+        await ctx.reply(
+            [
+                '🎧 Party help',
+                '',
+                `Add music: mention ${this.botMention(ctx)} and type a song name, then tap Add to queue.`,
+                'Playback: use the buttons below or /play, /pause, /next, and /prev.',
+                'Queue and room: /queue, /devices, and /info.',
+                'Group admins: /config opens interactive room settings; /register links this chat to a browser room.',
+                'Voting: /vote_next asks the room to skip when the configured vote count is reached.',
+                '',
+                'Tip: open /menu for playback and room controls.',
+            ].join('\n'),
+            Markup.inlineKeyboard([
+                [Markup.button.callback('🎛 Open controls', 'menu:home')],
+                [Markup.button.callback('🚀 Setup guide', 'menu:setup')],
+            ]),
+        );
+    }
+
+    @On('text')
+    async onBotMention(
+        @Ctx() ctx: Context,
+        @Next() next: () => Promise<void>,
+    ) {
+        const message = ctx.message;
+        const username = ctx.botInfo?.username;
+        if (!message || !('text' in message) || !username) {
+            await next();
+            return;
+        }
+
+        const mention = `@${username}`.toLowerCase();
+        const wasMentioned =
+            message.entities?.some(
+                (entity) =>
+                    entity.type === 'mention' &&
+                    message.text
+                        .slice(entity.offset, entity.offset + entity.length)
+                        .toLowerCase() === mention,
+            ) ?? false;
+        if (!wasMentioned || message.text.startsWith('/')) {
+            await next();
+            return;
+        }
+
+        const request = message.text
+            .replace(new RegExp(mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '')
+            .trim()
+            .toLowerCase();
+        const simpleRequest = request.replace(/[.!?]+$/g, '').trim();
+
+        if (/\b(help|command|what can you do)\b/.test(request)) {
+            await this.help(ctx);
+            return;
+        }
+        const directActions: Record<string, (context: Context) => Promise<void>> = {
+            play: this.play.bind(this),
+            start: this.play.bind(this),
+            pause: this.pause.bind(this),
+            next: this.next.bind(this),
+            skip: this.next.bind(this),
+            prev: this.prev.bind(this),
+            previous: this.prev.bind(this),
+        };
+        if (directActions[simpleRequest]) {
+            await directActions[simpleRequest](ctx);
+            return;
+        }
+        if (/\b(queue|songs|tracks)\b/.test(request)) {
+            await this.getQueues(ctx);
+            return;
+        }
+        if (/\b(volume|louder|quieter)\b/.test(request)) {
+            await this.volumeControls(ctx);
+            return;
+        }
+
+        await ctx.reply(
+            [
+                `Hey! I can help with the music party.`,
+                '',
+                `To find a song, tap Search music or type ${this.botMention(ctx)} followed by a song name.`,
+                'Use /menu for playback controls, /queue for the song list, or /help for setup and commands.',
+            ].join('\n'),
+            Markup.inlineKeyboard([
+                [Markup.button.switchToCurrentChat('🎵 Search music', '')],
+                [
+                    Markup.button.callback('🎛 Controls', 'menu:home'),
+                    Markup.button.callback('❔ Help', 'menu:help'),
+                ],
+            ]),
+        );
+    }
+
+    @Action(/^menu:(home|setup|register|help|play|pause|next|prev|queue|devices|vote_next|lyrics|volume|volume_up|volume_down|mute|unmute|info|config)$/)
+    async handleMenuAction(
+        @Ctx()
+        ctx: Context<UpdateType.CallbackQueryUpdate<CallbackQuery>> & {
+            match: RegExpExecArray;
+        },
+    ) {
+        const action = ctx.match[1];
+        if (action === 'home') {
+            await ctx.answerCbQuery();
+            await this.showHomeMenu(ctx);
+            return;
+        }
+        if (action === 'volume') {
+            await ctx.answerCbQuery();
+            await this.volumeControls(ctx);
+            return;
+        }
+        if (action === 'setup') {
+            await ctx.answerCbQuery();
+            const isPrivate = ctx.chat?.type === 'private';
+            await ctx.reply(
+                [
+                    '🚀 Connect a room',
+                    '',
+                    isPrivate
+                        ? '1. Add this bot to your Telegram group.\n2. In that group, an admin runs /register and copies the room ID.'
+                        : '1. A group admin taps Register room below.\n2. Copy the room ID into the browser extension.',
+                    '3. Install and enable the extension: https://addons.mozilla.org/en-US/firefox/addon/yt-music-party/',
+                    '4. Open https://music.youtube.com and join using the room ID.',
+                    `5. Add songs here by mentioning ${this.botMention(ctx)} followed by a song name.`,
+                ].join('\n'),
+                Markup.inlineKeyboard([
+                    [Markup.button.callback('📝 Register this group', 'menu:register')],
+                    [Markup.button.callback('🎛 Open controls', 'menu:home')],
+                ]),
+            );
+            return;
+        }
+        if (action === 'help') {
+            await ctx.answerCbQuery();
+            await this.help(ctx);
+            return;
+        }
+        if (action === 'register') {
+            if (ctx.chat?.type === 'private') {
+                await ctx.answerCbQuery('Run /register in the group you want to connect.', {
+                    show_alert: true,
+                });
+                return;
+            }
+            await ctx.answerCbQuery();
+            await this.register(ctx);
+            return;
+        }
+
+        const handlers: Record<string, (context: Context) => Promise<void>> = {
+            play: this.play.bind(this),
+            pause: this.pause.bind(this),
+            next: this.next.bind(this),
+            prev: this.prev.bind(this),
+            queue: this.getQueues.bind(this),
+            devices: this.devices.bind(this),
+            vote_next: this.vote_next.bind(this),
+            lyrics: this.lyrics.bind(this),
+            volume_up: this.volumeUp.bind(this),
+            volume_down: this.volumeDown.bind(this),
+            mute: this.mute.bind(this),
+            unmute: this.unmute.bind(this),
+            info: this.getRoomInfo.bind(this) as (context: Context) => Promise<void>,
+            config: this.getFeature.bind(this) as (context: Context) => Promise<void>,
+        };
+        const callbackMessage =
+            'message' in ctx.update.callback_query
+                ? ctx.update.callback_query.message
+                : undefined;
+        if (
+            ['volume_up', 'volume_down', 'mute', 'unmute'].includes(action) &&
+            ctx.chat &&
+            callbackMessage
+        ) {
+            this.playbackService.rememberVolumePanelMessage(
+                ctx.chat.id.toString(),
+                callbackMessage.message_id,
+            );
+        }
+        await ctx.answerCbQuery();
+        await handlers[action](ctx);
     }
 
     @Command('register')
-    async register(
-        @Ctx()
-        ctx: Context & {
-            chat: { members_count?: number };
-            message: { chat: { title: string } };
-        },
-    ) {
+    async register(@Ctx() ctx: Context) {
         const chatId = ctx.chat?.id.toString() || '';
         if (!chatId) {
             await ctx.reply('No chat id');
@@ -66,7 +304,7 @@ export class PlaybackTelegramController {
         }
 
         // if not in private chat
-        if (ctx.chat.type !== 'private') {
+        if (ctx.chat?.type !== 'private') {
             // only admins can register & unregister
             const userId = ctx.from?.id || 0;
             const chatMember = await ctx.getChatMember(userId);
@@ -109,7 +347,7 @@ export class PlaybackTelegramController {
         await this.playbackService.addRoom(
             roomId,
             chatId,
-            ctx.message?.chat.title || '',
+            ctx.chat && 'title' in ctx.chat ? ctx.chat.title : '',
         );
 
         await ctx.reply(
@@ -457,6 +695,48 @@ export class PlaybackTelegramController {
         this.gateway.volumeDown(room.id);
     }
 
+    @Command('volume')
+    async volumeControls(@Ctx() ctx: Context) {
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.reply('Open /volume in the registered room chat.');
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room) {
+            await ctx.reply('No room found. An admin can link this chat with /register.');
+            return;
+        }
+
+        const volumeEnabled = room.Feature?.volumeCommand === true;
+        const panel = await ctx.reply(
+            [
+                '🔊 <b>Room volume</b>',
+                '',
+                `Volume controls: ${volumeEnabled ? '✅ enabled' : '⛔ disabled'}`,
+                volumeEnabled
+                    ? 'Use the buttons to adjust the connected YouTube Music player. The updated level will appear here.'
+                    : 'A group admin can enable volume controls in /config.',
+            ].join('\n'),
+            {
+                parse_mode: 'HTML',
+                ...Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback('🔉 Volume down', 'menu:volume_down'),
+                        Markup.button.callback('🔊 Volume up', 'menu:volume_up'),
+                    ],
+                    [
+                        Markup.button.callback('🔇 Mute', 'menu:mute'),
+                        Markup.button.callback('🔈 Unmute', 'menu:unmute'),
+                    ],
+                    [Markup.button.callback('🎛 All controls', 'menu:home')],
+                ]),
+            },
+        );
+        this.playbackService.rememberVolumePanelMessage(chatId, panel.message_id);
+    }
+
     @Command('devices')
     async devices(@Ctx() ctx: Context) {
         const chatId = ctx.chat?.id.toString() || '';
@@ -472,7 +752,13 @@ export class PlaybackTelegramController {
         }
 
         if (room.Devices.length == 0) {
-            await ctx.reply('No devices connected');
+            await ctx.reply(
+                'No browsers are connected yet. Open YouTube Music and join this room with the extension.',
+                Markup.inlineKeyboard([
+                    [Markup.button.callback('🔄 Refresh devices', 'menu:devices')],
+                    [Markup.button.callback('🎛 Controls', 'menu:home')],
+                ]),
+            );
             return;
         }
 
@@ -489,6 +775,10 @@ export class PlaybackTelegramController {
             ].join('\n'),
             {
                 parse_mode: 'HTML',
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback('🔄 Refresh devices', 'menu:devices')],
+                    [Markup.button.callback('ℹ️ Room info', 'menu:info'), Markup.button.callback('🎛 Controls', 'menu:home')],
+                ]),
             },
         );
     }
@@ -550,6 +840,82 @@ export class PlaybackTelegramController {
         );
     }
 
+    private formatFeatureMenu(feature: RoomFeature): string {
+        return [
+            '🎛️ Room settings',
+            '',
+            'Tap a setting to toggle it. Use − / + to adjust the numbers.',
+            '',
+            `Minimum votes: ${feature.minimumVotes}`,
+            `Maximum queue size: ${feature.maxQueueSize}`,
+            `Next command: ${feature.nextCommand ? 'On' : 'Off'}`,
+            `Next command admin-only: ${feature.nextOnlyAdmin ? 'On' : 'Off'}`,
+            `Previous command: ${feature.previousCommand ? 'On' : 'Off'}`,
+            `Previous command admin-only: ${feature.previousOnlyAdmin ? 'On' : 'Off'}`,
+            `Mute command: ${feature.muteCommand ? 'On' : 'Off'}`,
+            `Unmute command: ${feature.unmuteCommand ? 'On' : 'Off'}`,
+            `Volume command: ${feature.volumeCommand ? 'On' : 'Off'}`,
+            '',
+            'Button guide:',
+            'Votes − / +: Set how many /vote_next votes are needed to skip.',
+            'Queue − / +: Set the maximum number of songs in the queue.',
+            '/next: Let members skip the current song.',
+            'Next admin-only: Limit /next to group admins.',
+            '/prev: Let members return to the previous song.',
+            'Previous admin-only: Limit /prev to group admins.',
+            '/mute and /unmute: Allow those playback commands.',
+            'Volume controls: Allow /volume_up and /volume_down.',
+            '',
+            'Custom values still work with /set <setting> <value>.',
+        ].join('\n');
+    }
+
+    private featureMenuKeyboard(feature: RoomFeature) {
+        const toggle = (label: string, key: string, value: boolean) =>
+            Markup.button.callback(
+                `${value ? '✅' : '❌'} ${label}`,
+                `config:toggle:${key}`,
+            );
+
+        return Markup.inlineKeyboard([
+            [
+                Markup.button.callback('−', 'config:adjust:minimumVotes:-1'),
+                Markup.button.callback(
+                    `Votes: ${feature.minimumVotes}`,
+                    'config:refresh:menu',
+                ),
+                Markup.button.callback('+', 'config:adjust:minimumVotes:1'),
+            ],
+            [
+                Markup.button.callback('−', 'config:adjust:maxQueueSize:-1'),
+                Markup.button.callback(
+                    `Queue: ${feature.maxQueueSize}`,
+                    'config:refresh:menu',
+                ),
+                Markup.button.callback('+', 'config:adjust:maxQueueSize:1'),
+            ],
+            [toggle('/next', 'nextCommand', feature.nextCommand)],
+            [
+                toggle(
+                    'Next admin-only',
+                    'nextOnlyAdmin',
+                    feature.nextOnlyAdmin,
+                ),
+            ],
+            [toggle('/prev', 'previousCommand', feature.previousCommand)],
+            [
+                toggle(
+                    'Previous admin-only',
+                    'previousOnlyAdmin',
+                    feature.previousOnlyAdmin,
+                ),
+            ],
+            [toggle('/mute', 'muteCommand', feature.muteCommand)],
+            [toggle('/unmute', 'unmuteCommand', feature.unmuteCommand)],
+            [toggle('Volume controls', 'volumeCommand', feature.volumeCommand)],
+        ]);
+    }
+
     @Command('config')
     async getFeature(
         @Ctx()
@@ -592,18 +958,107 @@ export class PlaybackTelegramController {
         }
 
         await ctx.reply(
-            [
-                '🎛️ Current Feature: \n',
-                `Minimum Votes: ${feature.minimumVotes}`,
-                `Next Command: ${feature.nextCommand}`,
-                `Next Only Admin: ${feature.nextOnlyAdmin}`,
-                `Previous Command: ${feature.previousCommand}`,
-                `Previous Only Admin: ${feature.previousOnlyAdmin}`,
-                `Mute Command: ${feature.muteCommand}`,
-                `Unmute Command: ${feature.unmuteCommand}`,
-                `Volume Command: ${feature.volumeCommand}`,
-                `Max Queue Size: ${feature.maxQueueSize}`,
-            ].join('\n'),
+            this.formatFeatureMenu(feature),
+            this.featureMenuKeyboard(feature),
+        );
+    }
+
+    @Action(/^config:(toggle|adjust|refresh):([a-zA-Z]+)(?::(-?\d+))?$/)
+    async updateFeatureFromMenu(
+        @Ctx()
+        ctx: Context<UpdateType.CallbackQueryUpdate<CallbackQuery>> & {
+            match: RegExpExecArray;
+        },
+    ) {
+        const [, action, setting, rawDelta] = ctx.match;
+        const chatId = ctx.chat?.id.toString() || '';
+        if (!chatId) {
+            await ctx.answerCbQuery('Open /config in the room chat.', {
+                show_alert: true,
+            });
+            return;
+        }
+
+        const room = await this.playbackService.getRoomByChatId(chatId);
+        if (!room?.Feature) {
+            await ctx.answerCbQuery('No room settings found.', {
+                show_alert: true,
+            });
+            return;
+        }
+
+        if (ctx.chat?.type !== 'private') {
+            const member = await ctx.getChatMember(ctx.from?.id || 0);
+            if (!['administrator', 'creator'].includes(member.status)) {
+                await ctx.answerCbQuery('Only room admins can change settings.', {
+                    show_alert: true,
+                });
+                return;
+            }
+        }
+
+        if (action === 'refresh') {
+            await ctx.answerCbQuery('Settings are up to date.');
+            return;
+        }
+
+        if (action === 'toggle') {
+            const toggleableSettings = [
+                'nextCommand',
+                'nextOnlyAdmin',
+                'previousCommand',
+                'previousOnlyAdmin',
+                'muteCommand',
+                'unmuteCommand',
+                'volumeCommand',
+            ] as const;
+
+            if (
+                !toggleableSettings.includes(
+                    setting as (typeof toggleableSettings)[number],
+                )
+            ) {
+                await ctx.answerCbQuery('Unknown setting.', {
+                    show_alert: true,
+                });
+                return;
+            }
+
+            const key = setting as (typeof toggleableSettings)[number];
+            await this.playbackService.setFeature(
+                room.id,
+                key,
+                !room.Feature[key],
+            );
+        }
+
+        if (action === 'adjust') {
+            if (setting !== 'minimumVotes' && setting !== 'maxQueueSize') {
+                await ctx.answerCbQuery('Unknown setting.', {
+                    show_alert: true,
+                });
+                return;
+            }
+
+            const step = setting === 'minimumVotes' ? 1 : 5;
+            const currentValue = room.Feature[setting];
+            const nextValue = Math.max(
+                1,
+                currentValue + Number(rawDelta || 0) * step,
+            );
+            await this.playbackService.setFeature(room.id, setting, nextValue);
+        }
+
+        const updatedRoom = await this.playbackService.getRoomByChatId(chatId);
+        if (!updatedRoom?.Feature) {
+            await ctx.answerCbQuery('Could not reload room settings.');
+            return;
+        }
+
+        await ctx.answerCbQuery('Settings updated.');
+        await ctx.editMessageText(
+            this.formatFeatureMenu(updatedRoom.Feature),
+            this.featureMenuKeyboard(updatedRoom.Feature),
         );
     }
 
@@ -737,14 +1192,18 @@ export class PlaybackTelegramController {
         await ctx.reply(
             [
                 '🎛️ Current Room Info: \n',
-                `🆔 Room: \`${room.id}\``,
+                `🆔 Room: <code>${room.id}</code>`,
                 `💬 Chat ID: ${room.chatId}`,
                 `🎧 Queue: ${queues.length} songs`,
                 `🖥️ Devices Count: ${room.Devices.length}`,
                 `📅 Created At: ${room.createdAt.toLocaleString()}`,
             ].join('\n'),
             {
-                parse_mode: 'MarkdownV2',
+                parse_mode: 'HTML',
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📋 View queue', 'menu:queue'), Markup.button.callback('🖥 Devices', 'menu:devices')],
+                    [Markup.button.callback('🎛 Controls', 'menu:home')],
+                ]),
             },
         );
     }
@@ -767,24 +1226,31 @@ export class PlaybackTelegramController {
 
             const senderID = ctx.from.id;
 
-            const cacheExpireTime = 60 * 1000; // 1 minute
+            const cacheExpireTime = 24 * 60 * 60 * 1000; // 24 hours
 
             const videoIds: string[] = [];
 
-            const cacheKey = `songs:${inlineQueryID}`;
-            const cachedData = await this.cacheManager.get<Song>(cacheKey);
-            if (!cachedData) {
-                void this.cacheManager.set<Song[]>(
-                    cacheKey,
-                    songs.map((row) => ({
-                        videoId: row.videoId,
-                        name: row.name,
-                        artist: row.artist,
-                        duration: row.duration,
-                    })) as Song[],
+            const songsToCache = songs.map((row) => ({
+                videoId: row.videoId,
+                name: row.name,
+                artist: row.artist,
+                duration: row.duration,
+            })) as Song[];
+
+            await Promise.all([
+                this.cacheManager.set<Song[]>(
+                    `songs:${inlineQueryID}`,
+                    songsToCache,
                     cacheExpireTime,
-                );
-            }
+                ),
+                ...songsToCache.map((song) =>
+                    this.cacheManager.set<Song>(
+                        `song:${song.videoId}`,
+                        song,
+                        cacheExpireTime,
+                    ),
+                ),
+            ]);
 
             await ctx.answerInlineQuery(
                 songs
@@ -827,10 +1293,24 @@ export class PlaybackTelegramController {
                             ]),
                         }),
                     ),
-                {},
+                { cache_time: 60, is_personal: true },
             );
         } catch (e) {
-            console.error(e);
+            const searchError = e as {
+                message?: string;
+                response?: { status?: number; data?: unknown };
+            };
+            const responseData = searchError.response?.data;
+            const responseSummary =
+                typeof responseData === 'string'
+                    ? responseData.replace(/\s+/g, ' ').slice(0, 300)
+                    : JSON.stringify(responseData)?.slice(0, 300);
+
+            console.error('YouTube Music inline search failed:', {
+                status: searchError.response?.status,
+                message: searchError.message ?? String(e),
+                response: responseSummary,
+            });
         }
     }
 
@@ -839,8 +1319,8 @@ export class PlaybackTelegramController {
         @Ctx()
         ctx: Context<UpdateType.ChosenInlineResultUpdate>,
     ) {
-        const { inline_message_id, query } = ctx.update.chosen_inline_result;
-        if (!inline_message_id || !query) return;
+        const { inline_message_id } = ctx.update.chosen_inline_result;
+        if (!inline_message_id) return;
 
         // get result id
         const resultId = ctx.update.chosen_inline_result.result_id;
@@ -851,33 +1331,30 @@ export class PlaybackTelegramController {
         // get from cache
         const cacheKey = `songs:${inlineQueryID}`;
         const cachedSongs = await this.cacheManager.get<Song[]>(cacheKey);
-        if (!cachedSongs) {
-            await ctx.telegram.editMessageText(
-                undefined,
-                undefined,
-                inline_message_id,
-                `🔗 This link has expired. Please try generating a new one.`,
-            );
-            return;
-        }
-
-        // get the song detail
-        const song = cachedSongs.find((row) => row.videoId === videoId);
+        let song =
+            (await this.cacheManager.get<Song>(`song:${videoId}`)) ??
+            cachedSongs?.find((row) => row.videoId === videoId);
         if (!song) {
-            await ctx.telegram.editMessageText(
-                undefined,
-                undefined,
-                inline_message_id,
-                `⚠️ Something went wrong with the link. Please try again or request a new one.`,
-            );
-            return;
+            try {
+                song = await this.fetchSongSummary(videoId);
+            } catch (error) {
+                console.error('Could not load selected YouTube Music song:', {
+                    videoId,
+                    message:
+                        error instanceof Error ? error.message : String(error),
+                });
+                await ctx.telegram.editMessageText(
+                    undefined,
+                    undefined,
+                    inline_message_id,
+                    `⚠️ Could not load this song. Please search for it again.`,
+                );
+                return;
+            }
         }
 
-        // remove from cache
-        await this.cacheManager.delete(cacheKey);
-
-        // set cache for wait verifying
-        const cacheExpireTime = 60 * 1000 * 5; // 5 minute
+        // Keep the selection available while the user confirms the queue action.
+        const cacheExpireTime = 24 * 60 * 60 * 1000; // 24 hours
         const cacheKeySong = `song:${inline_message_id}:${videoId}`;
         await this.cacheManager.set<Song>(cacheKeySong, song, cacheExpireTime);
     }
@@ -937,18 +1414,27 @@ export class PlaybackTelegramController {
 
         // get from cache
         const cacheKey = `song:${messageInlineID}:${videoId}`;
-        const cachedSong = await this.cacheManager.get<Song>(cacheKey);
+        let cachedSong =
+            (await this.cacheManager.get<Song>(cacheKey)) ??
+            (await this.cacheManager.get<Song>(`song:${videoId}`));
         if (!cachedSong) {
-            await ctx.telegram.editMessageText(
-                undefined,
-                undefined,
-                messageInlineID,
-                `🔗 This link has expired. Please try generating a new one.`,
-                {
-                    parse_mode: 'HTML',
-                },
-            );
-            return;
+            try {
+                cachedSong = await this.fetchSongSummary(videoId);
+            } catch (error) {
+                console.error('Could not load queued YouTube Music song:', {
+                    videoId,
+                    message:
+                        error instanceof Error ? error.message : String(error),
+                });
+                await ctx.telegram.editMessageText(
+                    undefined,
+                    undefined,
+                    messageInlineID,
+                    `⚠️ Could not load this song. Please search for it again.`,
+                    { parse_mode: 'HTML' },
+                );
+                return;
+            }
         }
 
         // // get the song detail
@@ -972,7 +1458,14 @@ export class PlaybackTelegramController {
             cachedSong.duration || 0,
         )}]`;
 
-        await this.playbackService.addToQueue(roomId, videoId, songCombined);
+        const adderKey = `queueAdder:${messageInlineID}:${videoId}`;
+        const addedBy = await this.cacheManager.get<string>(adderKey);
+        await this.playbackService.addToQueue(
+            roomId,
+            videoId,
+            songCombined,
+            addedBy,
+        );
 
         await ctx.telegram.editMessageText(
             undefined,
@@ -994,6 +1487,7 @@ export class PlaybackTelegramController {
 
         // remove from cache
         await this.cacheManager.delete(cacheKey);
+        await this.cacheManager.delete(adderKey);
 
         // emit add to queue
         this.gateway.addToQueueCommand(roomId, videoId);
@@ -1014,6 +1508,20 @@ export class PlaybackTelegramController {
         if (parseInt(senderID) !== ctx.from.id) {
             await ctx.answerCbQuery('You are not allowed to add this song');
             return;
+        }
+
+        const inlineMessageId = ctx.update.callback_query.inline_message_id;
+        if (inlineMessageId) {
+            const addedBy = ctx.from.username
+                ? `@${ctx.from.username}`
+                : [ctx.from.first_name, ctx.from.last_name]
+                      .filter(Boolean)
+                      .join(' ');
+            await this.cacheManager.set(
+                `queueAdder:${inlineMessageId}:${videoId}`,
+                addedBy || `User ${ctx.from.id}`,
+                24 * 60 * 60 * 1000,
+            );
         }
 
         await ctx.answerCbQuery('Adding to queue...');
@@ -1095,6 +1603,10 @@ export class PlaybackTelegramController {
                     '🚫 No tracks in the queue right now.',
                     `Don't worry—auto-queue will kick in if something's already playing.`,
                 ].join('\n'),
+                Markup.inlineKeyboard([
+                    [Markup.button.callback('🔄 Refresh queue', 'menu:queue')],
+                    [Markup.button.callback('🎛 Controls', 'menu:home')],
+                ]),
             );
             return;
         }
@@ -1107,18 +1619,32 @@ export class PlaybackTelegramController {
                         (d, i) =>
                             `${i + 1}. "${d.title
                                 .split(' - ')
-                                .map((v, i) => {
-                                    if (i === 0) {
-                                        return `<i>${v}</i>`;
-                                    }
-                                    return v;
+                                .map((value, partIndex) => {
+                                    const safeValue = value
+                                        .replace(/&/g, '&amp;')
+                                        .replace(/</g, '&lt;')
+                                        .replace(/>/g, '&gt;')
+                                        .replace(/"/g, '&quot;');
+                                    return partIndex === 0
+                                        ? `<i>${safeValue}</i>`
+                                        : safeValue;
                                 })
-                                .join(' - ')}"`,
+                                .join(' - ')}"\n   👤 Added by: ${d.addedBy
+                                ? d.addedBy
+                                      .replace(/&/g, '&amp;')
+                                      .replace(/</g, '&lt;')
+                                      .replace(/>/g, '&gt;')
+                                      .replace(/"/g, '&quot;')
+                                : 'unknown'}`,
                     )
                     .join('\n')}`,
             ].join('\n'),
             {
                 parse_mode: 'HTML',
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback('🔄 Refresh queue', 'menu:queue'), Markup.button.callback('⏭ Skip', 'menu:next')],
+                    [Markup.button.callback('🎛 Controls', 'menu:home')],
+                ]),
             },
         );
     }

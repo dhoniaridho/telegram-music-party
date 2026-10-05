@@ -1,174 +1,60 @@
-import { Suspense, useEffect, useState } from "react";
-import { addToast, Button, Input, Spinner, Switch } from "@heroui/react";
-import { firstValueFrom, from, map, of, switchMap } from "rxjs";
-import { AnimatePresence, motion } from "framer-motion";
-
 function App() {
-    const [selfHosted, setSelfHosted] = useState(false);
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        const data = new FormData(e.currentTarget);
-        await chrome.storage.local.set({
-            partyUrl: data.get("partyUrl") || "https://party.dhoniaridho.com",
-            roomId: data.get("roomId"),
-        });
-
-        addToast({
-            title: "Updated Party Config",
-        });
-        const url = "*://*.youtube.com/*";
-        chrome.tabs.query({ url: url }, (tabs) => {
-            tabs.forEach((t) => chrome.tabs.reload(t.id as number));
-        });
-    };
-
-    const [partyUrl, setPartyUrl] = useState("");
-
-    const getConfig = async () => {
-        return new Promise<{ roomId: string; partyUrl: string }>((res) => {
-            return chrome.storage?.local?.get<{
-                roomId: string;
-                partyUrl: string;
-            }>(["roomId", "partyUrl"], (result) => {
-                res(result);
-            });
-        });
-    };
-
-    const [roomId, setRoomId] = useState("");
-
-    useEffect(() => {
-        (async () => {
-            const result = await getConfig();
-            setRoomId(result.roomId);
-            setPartyUrl(result.partyUrl);
-        })();
-    }, []);
-
-    useEffect(() => {
-        (async () => {
-            await firstValueFrom(
-                from(chrome.storage?.local?.get("partyUrl") || of()).pipe(
-                    map((v) => v.partyUrl as string),
-                    switchMap(async (v) => {
-                        if (!v) {
-                            const defaultValue =
-                                "https://party.dhoniaridho.com";
-                            return defaultValue;
-                        }
-                        setPartyUrl(v);
-                        return v;
-                    }),
-                    switchMap(async (v) => {
-                        console.log(v);
-                        await chrome.storage.local.set({
-                            partyUrl: v,
-                        });
-
-                        setPartyUrl(v);
-                        return v;
-                    })
-                )
-            );
-        })();
-    }, []);
-
-    const onLeaveRoom = async () => {
-        await chrome.storage.local.remove("roomId");
-        setRoomId("");
-        addToast({
-            title: "Successfully Left Room",
-        });
-    };
-
     return (
-        <main className="bg-slate-200 min-w-[400px] min-h-[400px]">
-            <div className="flex justify-center items-center w-full min-h-screen">
-                <div className="flex flex-col gap-5 justify-center items-center w-full max-w-xl px-5">
-                    <form
-                        className="w-full flex justify-center gap-3 flex-col"
-                        onSubmit={handleSubmit}
-                    >
-                        <Suspense
-                            fallback={
-                                <div className="flex flex-col justify-center items-center">
-                                    <Spinner />
-                                    <div>Still doing stuff</div>
-                                </div>
-                            }
-                        >
-                            {roomId && (
-                                <>
-                                    <p className="text-center font-bold">
-                                        Joined Room: <br />{" "}
-                                        <div className="text-xl">{roomId}</div>
-                                    </p>
-                                    <Button
-                                        color="danger"
-                                        onPress={onLeaveRoom}
-                                    >
-                                        Leave Room
-                                    </Button>
-                                </>
-                            )}
-                            {!roomId && (
-                                <>
-                                    <div>
-                                        <h1 className="text-2xl font-bold">
-                                            Party Config
-                                        </h1>
-                                    </div>
+        <main className="min-w-[360px] bg-slate-950 p-6 text-slate-100">
+            <div className="mx-auto flex max-w-md flex-col gap-5">
+                <header>
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-300">
+                        Telegram Music Party
+                    </p>
+                    <h1 className="mt-2 text-2xl font-bold">
+                        How to use the extension
+                    </h1>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                        Connect a YouTube Music tab to a Telegram group and let
+                        the group control playback.
+                    </p>
+                </header>
 
-                                    <Input
-                                        name="roomId"
-                                        label="Room Id"
-                                        defaultValue={roomId}
-                                        placeholder="Room Id"
-                                    />
+                <ol className="flex flex-col gap-4 text-sm leading-6">
+                    <li className="flex gap-3">
+                        <span className="font-bold text-violet-300">1</span>
+                        <span>
+                            Add the Telegram bot shown by its <code>/start</code>{" "}
+                            message to your group and run <code>/register</code>.
+                        </span>
+                    </li>
+                    <li className="flex gap-3">
+                        <span className="font-bold text-violet-300">2</span>
+                        <span>
+                            Open <strong>YouTube Music</strong>, click{" "}
+                            <strong>Join Room</strong> in its sidebar, and enter
+                            the room ID from Telegram. The party server URL is
+                            prefilled; edit it only if you use a self-hosted
+                            server.
+                        </span>
+                    </li>
+                    <li className="flex gap-3">
+                        <span className="font-bold text-violet-300">3</span>
+                        <span>
+                            In the group, search with{" "}
+                            mention the bot's current username followed by a
+                            song search, then
+                            choose <strong>Add to Queue</strong>.
+                        </span>
+                    </li>
+                    <li className="flex gap-3">
+                        <span className="font-bold text-violet-300">4</span>
+                        <span>
+                            Run <code>/play</code> in the group. Keep the joined
+                            YouTube Music tab open to play and sync the queue.
+                        </span>
+                    </li>
+                </ol>
 
-                                    <Switch
-                                        size="sm"
-                                        onChange={(e) =>
-                                            setSelfHosted(e.target.checked)
-                                        }
-                                    >
-                                        Self Hosted
-                                    </Switch>
-                                    <AnimatePresence>
-                                        {selfHosted && (
-                                            <motion.div
-                                                initial={{
-                                                    height: 0,
-                                                    opacity: 0,
-                                                }}
-                                                animate={{
-                                                    height: "100%",
-                                                    opacity: 1,
-                                                }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                            >
-                                                <Input
-                                                    name="partyUrl"
-                                                    label="Party Url"
-                                                    defaultValue={partyUrl}
-                                                    placeholder="https://party.dhoniaridho.com"
-                                                />
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                    <Button
-                                        size="sm"
-                                        type="submit"
-                                        color="primary"
-                                        className="w-full"
-                                    >
-                                        Submit
-                                    </Button>
-                                </>
-                            )}
-                        </Suspense>
-                    </form>
-                </div>
+                <footer className="border-t border-slate-800 pt-4 text-xs text-slate-400">
+                    To leave a room, use <strong>Leave Room</strong> in the
+                    YouTube Music sidebar.
+                </footer>
             </div>
         </main>
     );

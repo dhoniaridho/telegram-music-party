@@ -8,7 +8,6 @@ import * as YTMusic from 'ytmusic-api';
 export class YTMusicService implements OnModuleInit {
     private ytm: YTMusic.default;
     async onModuleInit() {
-        console.log(YTMusic);
         // @ts-expect-errors
         this.ytm = new YTMusic();
 

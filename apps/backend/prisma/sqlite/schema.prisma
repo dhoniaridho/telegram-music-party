@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+    provider = "prisma-client-js"
+    output   = "../generated/sqlite-client"
+}
+
+datasource db {
+    provider = "sqlite"
+    url      = env("SQLITE_DATABASE_URL")
+}
+
+model Room {
+    id        String   @id @unique
+    chatId    String
+    name      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    Queues   Queue[]
+    Devices  Device[]
+    Votes    Vote[]
+    Feature Feature?
+}
+
+model Device {
+    id          String   @id @default(uuid())
+    roomId      String
+    room        Room     @relation(fields: [roomId], references: [id])
+    name        String
+    fingerprint String
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Queue {
+    id        String    @id @default(uuid())
+    roomId    String
+    room      Room      @relation(fields: [roomId], references: [id])
+    title     String
+    url       String
+    addedBy   String?
+    createdAt DateTime? @default(now())
+    updatedAt DateTime  @updatedAt
+}
+
+model Vote {
+    id        String   @id @default(uuid())
+    roomId    String
+    room      Room     @relation(fields: [roomId], references: [id])
+    userId    String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Feature {
+    id                String   @id @default(uuid())
+    roomId            String   @unique
+    room              Room     @relation(fields: [roomId], references: [id])
+    minimumVotes      Int      @default(5)
+    nextCommand       Boolean  @default(false)
+    nextOnlyAdmin     Boolean  @default(true)
+    previousCommand   Boolean  @default(false)
+    previousOnlyAdmin Boolean  @default(true)
+    muteCommand       Boolean  @default(true)
+    unmuteCommand     Boolean  @default(true)
+    volumeCommand     Boolean  @default(false)
+    maxQueueSize      Int      @default(25)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+}

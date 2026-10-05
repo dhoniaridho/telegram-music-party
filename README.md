@@ -48,3 +48,9 @@ git push origin v1.0.0
 ```
 
 The image will be available as `ghcr.io/<owner>/<repository>:v1.0.0`.
+
+## Storage
+
+By default, the backend stores data in SQLite at `apps/backend/prisma/local.db` and uses an in-memory cache. Copy `apps/backend/.env.example` to `apps/backend/.env` to customize the setup.
+
+To use PostgreSQL, set `DATABASE_PROVIDER=postgresql` and `DATABASE_URL`. To use Redis, set `REDIS_URL`. If Redis is configured but cannot connect, the backend falls back to the in-memory cache.

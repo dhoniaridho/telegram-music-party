@@ -40,14 +40,14 @@ A Telegram bot that allows users to play music from different sources like Spoti
 
 ## Releases
 
-Push any Git tag to build and publish the backend container for Linux AMD64 and ARM64. The workflow publishes it to GitHub Container Registry and creates a GitHub Release with generated notes.
+Every push to `main` builds and publishes the backend container for Linux AMD64 and ARM64 to GitHub Container Registry with the `main` and `latest` tags. Pushing a Git tag also publishes a versioned image and creates a GitHub Release with generated notes.
 
 ```sh
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The image will be available as `ghcr.io/<owner>/<repository>:v1.0.0`.
+The images will be available as `ghcr.io/<owner>/<repository>:main`, `:latest`, and (for tagged releases) `:v1.0.0`.
 
 ## Storage
 

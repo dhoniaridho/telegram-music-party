@@ -385,6 +385,10 @@ export class PlaybackTelegramController {
         // get room from current chat id
         const room = await this.playbackService.getRoomByChatId(chatId);
         if (room) {
+            await this.playbackService.updateRoomTopic(
+                chatId,
+                ctx.message?.message_thread_id,
+            );
             await ctx.reply(
                 // `This chat is already registered. \nHere is the Room ID: \n\n<pre><code class="language-sh">${room.id}</code></pre>`,
                 [
@@ -411,6 +415,7 @@ export class PlaybackTelegramController {
             roomId,
             chatId,
             ctx.chat && 'title' in ctx.chat ? ctx.chat.title : '',
+            ctx.message?.message_thread_id,
         );
 
         await ctx.reply(
@@ -1304,6 +1309,15 @@ export class PlaybackTelegramController {
             const songs = await this.ytmusicService.searchSongs(searchQuery);
 
             const senderID = ctx.from.id;
+            const rooms = await this.playbackService.getRooms();
+            if (rooms.length === 0) {
+                await ctx.answerInlineQuery([], {
+                    cache_time: 0,
+                    is_personal: true,
+                });
+                return;
+            }
+            const targetRoom = rooms[1] ?? rooms[0];
 
             const cacheExpireTime = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -1351,16 +1365,10 @@ export class PlaybackTelegramController {
                                 message_text: `${row.name} by ${row.artist.name}`,
                             },
                             ...Markup.inlineKeyboard([
-                                // [
-                                //   Markup.button.callback(
-                                //     "Play Next",
-                                //     `play-this-next-${userID}:${row.musicID}`,
-                                //   ),
-                                // ],
                                 [
                                     Markup.button.callback(
                                         'Add to Queue',
-                                        `queue:${senderID}:${row.videoId}`,
+                                        `queue:${senderID}:${row.videoId}:${targetRoom.id}`,
                                     ),
                                 ],
                                 [
@@ -1372,7 +1380,7 @@ export class PlaybackTelegramController {
                             ]),
                         }),
                     ),
-                { cache_time: 60, is_personal: true },
+                { cache_time: 0, is_personal: true },
             );
         } catch (e) {
             const searchError = e as {
@@ -1393,185 +1401,6 @@ export class PlaybackTelegramController {
         }
     }
 
-    @On('chosen_inline_result')
-    async chosenInlineResult(
-        @Ctx()
-        ctx: Context<UpdateType.ChosenInlineResultUpdate>,
-    ) {
-        const { inline_message_id } = ctx.update.chosen_inline_result;
-        if (!inline_message_id) return;
-
-        // get result id
-        const resultId = ctx.update.chosen_inline_result.result_id;
-
-        // get search query id
-        const [inlineQueryID, videoId] = resultId.split(':');
-
-        // get from cache
-        const cacheKey = `songs:${inlineQueryID}`;
-        const cachedSongs = await this.cacheManager.get<Song[]>(cacheKey);
-        let song =
-            (await this.cacheManager.get<Song>(`song:${videoId}`)) ??
-            cachedSongs?.find((row) => row.videoId === videoId);
-        if (!song) {
-            try {
-                song = await this.fetchSongSummary(videoId);
-            } catch (error) {
-                console.error('Could not load selected YouTube Music song:', {
-                    videoId,
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                });
-                await ctx.telegram.editMessageText(
-                    undefined,
-                    undefined,
-                    inline_message_id,
-                    `⚠️ Could not load this song. Please search for it again.`,
-                );
-                return;
-            }
-        }
-
-        // Keep the selection available while the user confirms the queue action.
-        const cacheExpireTime = 24 * 60 * 60 * 1000; // 24 hours
-        const cacheKeySong = `song:${inline_message_id}:${videoId}`;
-        await this.cacheManager.set<Song>(cacheKeySong, song, cacheExpireTime);
-    }
-
-    @On('edited_message')
-    async editedMessage(@Ctx() ctx: Context) {
-        if (!ctx.editedMessage?.via_bot?.is_bot) return;
-
-        const inlineKeyboard = ctx.editedMessage.reply_markup?.inline_keyboard;
-        if (!inlineKeyboard || inlineKeyboard?.length === 0) return;
-
-        const buttons = inlineKeyboard[0];
-        if (buttons.length === 0) return;
-
-        const addToQueueBtn = buttons[0] as InlineKeyboardButton.CallbackButton;
-
-        if (
-            addToQueueBtn.text !== 'Verifying..' ||
-            !addToQueueBtn.callback_data.startsWith('verify:')
-        ) {
-            return;
-        }
-
-        const videoId = addToQueueBtn.callback_data.split(':')[2];
-
-        const messageInlineID = addToQueueBtn.callback_data.split(':')[3];
-
-        // get the room
-        const chatId = ctx.chat?.id.toString() || '';
-        if (!chatId) return;
-
-        const room = await this.playbackService.getRoomByChatId(chatId);
-        if (!room) {
-            await ctx.telegram.editMessageText(
-                undefined,
-                undefined,
-                messageInlineID,
-                `🚫 No party here—Music Party isn't available in this chat`,
-            );
-            return;
-        }
-
-        const roomId = room.id;
-
-        // limit the queue to 10 songs
-        const queueLimit = room.Feature ? room.Feature.maxQueueSize : 10;
-        const queues = await this.playbackService.getQueues(roomId);
-        if (queues.length >= queueLimit) {
-            await ctx.telegram.editMessageText(
-                undefined,
-                undefined,
-                messageInlineID,
-                `🚫 Queue is full. Please remove some songs before adding new ones.`,
-            );
-            return;
-        }
-
-        // get from cache
-        const cacheKey = `song:${messageInlineID}:${videoId}`;
-        let cachedSong =
-            (await this.cacheManager.get<Song>(cacheKey)) ??
-            (await this.cacheManager.get<Song>(`song:${videoId}`));
-        if (!cachedSong) {
-            try {
-                cachedSong = await this.fetchSongSummary(videoId);
-            } catch (error) {
-                console.error('Could not load queued YouTube Music song:', {
-                    videoId,
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                });
-                await ctx.telegram.editMessageText(
-                    undefined,
-                    undefined,
-                    messageInlineID,
-                    `⚠️ Could not load this song. Please search for it again.`,
-                    { parse_mode: 'HTML' },
-                );
-                return;
-            }
-        }
-
-        // // get the song detail
-        // const song = await this.ytmusicService.getSong(videoId);
-
-        // check song is already in queue
-        if (queues.find((q) => q.url === videoId)) {
-            await ctx.telegram.editMessageText(
-                undefined,
-                undefined,
-                messageInlineID,
-                `🔁 "<i>${cachedSong.name} by ${cachedSong.artist.name}</i>" is already in the queue.`,
-                {
-                    parse_mode: 'HTML',
-                },
-            );
-            return;
-        }
-
-        const songCombined = `${cachedSong.name} - ${cachedSong.artist.name} [${formatDuration(
-            cachedSong.duration || 0,
-        )}]`;
-
-        const adderKey = `queueAdder:${messageInlineID}:${videoId}`;
-        const addedBy = await this.cacheManager.get<string>(adderKey);
-        await this.playbackService.addToQueue(
-            roomId,
-            videoId,
-            songCombined,
-            addedBy,
-        );
-
-        await ctx.telegram.editMessageText(
-            undefined,
-            undefined,
-            messageInlineID,
-            `↩️ ${songCombined
-                .split(' - ')
-                .map((v, k) => {
-                    if (k === 0) {
-                        return `<i>${v}</i>`;
-                    }
-                    return v;
-                })
-                .join(' - ')} added to the queue.`,
-            {
-                parse_mode: 'HTML',
-            },
-        );
-
-        // remove from cache
-        await this.cacheManager.delete(cacheKey);
-        await this.cacheManager.delete(adderKey);
-
-        // emit add to queue
-        this.gateway.addToQueueCommand(roomId, videoId);
-    }
-
     @Action(/queue:(.*)/)
     async addToQueue(
         @Ctx()
@@ -1580,7 +1409,7 @@ export class PlaybackTelegramController {
                 match: RegExpExecArray;
             },
     ) {
-        const [senderID, videoId] = ctx.match[1].split(':');
+        const [senderID, videoId, requestedRoomId] = ctx.match[1].split(':');
 
         if (!videoId || !senderID) return;
 
@@ -1589,32 +1418,110 @@ export class PlaybackTelegramController {
             return;
         }
 
-        const inlineMessageId = ctx.update.callback_query.inline_message_id;
-        if (inlineMessageId) {
-            const addedBy = ctx.from.username
-                ? `@${ctx.from.username}`
-                : [ctx.from.first_name, ctx.from.last_name]
-                      .filter(Boolean)
-                      .join(' ');
-            await this.cacheManager.set(
-                `queueAdder:${inlineMessageId}:${videoId}`,
-                addedBy || `User ${ctx.from.id}`,
-                24 * 60 * 60 * 1000,
+        const roomId = requestedRoomId;
+        if (!roomId) {
+            await ctx.answerCbQuery(
+                'Please search again to choose a room for this song.',
+                { show_alert: true },
             );
+            return;
         }
 
-        await ctx.answerCbQuery('Adding to queue...');
+        const room = await this.playbackService.getRoom(roomId);
+        if (!room) {
+            await ctx.answerCbQuery('This room is no longer available.', {
+                show_alert: true,
+            });
+            return;
+        }
 
-        await ctx.editMessageReplyMarkup({
-            inline_keyboard: [
-                [
-                    Markup.button.callback(
-                        `Verifying..`,
-                        `verify:${senderID}:${videoId}:${ctx.update.callback_query.inline_message_id}`,
-                    ),
-                ],
-            ],
-        });
+        const queues = await this.playbackService.getQueues(roomId);
+        const queueLimit = room.Feature?.maxQueueSize ?? 10;
+        if (queues.length >= queueLimit) {
+            await ctx.answerCbQuery('Queue is full. Remove a song first.', {
+                show_alert: true,
+            });
+            return;
+        }
+
+        if (queues.some((queue) => queue.url === videoId)) {
+            await ctx.answerCbQuery('This song is already in the queue.', {
+                show_alert: true,
+            });
+            return;
+        }
+
+        let song = await this.cacheManager.get<Song>(`song:${videoId}`);
+        if (!song) {
+            try {
+                song = await this.fetchSongSummary(videoId);
+            } catch (error) {
+                console.error('Could not load queued YouTube Music song:', {
+                    videoId,
+                    message:
+                        error instanceof Error ? error.message : String(error),
+                });
+                await ctx.answerCbQuery(
+                    'Could not load this song. Please search again.',
+                    { show_alert: true },
+                );
+                return;
+            }
+        }
+
+        const songCombined = `${song.name} - ${song.artist.name} [${formatDuration(
+            song.duration || 0,
+        )}]`;
+        const addedBy = ctx.from.username
+            ? `@${ctx.from.username}`
+            : [ctx.from.first_name, ctx.from.last_name]
+                  .filter(Boolean)
+                  .join(' ');
+
+        await this.playbackService.addToQueue(
+            roomId,
+            videoId,
+            songCombined,
+            addedBy || `User ${ctx.from.id}`,
+        );
+        await ctx.answerCbQuery('Added to queue.');
+
+        const inlineMessageId = ctx.update.callback_query.inline_message_id;
+        if (inlineMessageId) {
+            try {
+                await ctx.telegram.editMessageText(
+                    undefined,
+                    undefined,
+                    inlineMessageId,
+                    `↩️ ${songCombined} added to the queue in ${room.name}.`,
+                );
+            } catch (error) {
+                console.error('Could not update inline queue message:', {
+                    roomId,
+                    message:
+                        error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+
+        if (room.topicId !== null) {
+            try {
+                await this.playbackService.sendMessageToRoomTopic(
+                    room.chatId,
+                    room.topicId,
+                    `🎵 ${songCombined} added to the queue.`,
+                );
+            } catch (error) {
+                console.error('Could not post queue confirmation to topic:', {
+                    roomId,
+                    topicId: room.topicId,
+                    message:
+                        error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+
+        this.gateway.addToQueueCommand(roomId, videoId);
     }
 
     @Action(/cancel:(.*)/)

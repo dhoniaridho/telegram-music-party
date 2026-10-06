@@ -98,11 +98,17 @@ export class PlaybackService {
         return nextItem as Queue;
     }
 
-    async addRoom(roomID: string, chatId: string, name: string) {
+    async addRoom(
+        roomID: string,
+        chatId: string,
+        name: string,
+        topicId?: number,
+    ) {
         await this.prisma.room.create({
             data: {
                 id: roomID,
                 chatId,
+                topicId,
                 name,
                 Feature: {
                     create: {},
@@ -114,6 +120,13 @@ export class PlaybackService {
         });
     }
 
+    async updateRoomTopic(chatId: string, topicId?: number) {
+        await this.prisma.room.updateMany({
+            where: { chatId },
+            data: { topicId: topicId ?? null },
+        });
+    }
+
     async getRoom(roomId: string) {
         return this.prisma.room.findFirst({
             where: {
@@ -121,6 +134,17 @@ export class PlaybackService {
             },
             include: {
                 Feature: true,
+            },
+        });
+    }
+
+    async getRooms() {
+        return this.prisma.room.findMany({
+            include: {
+                Feature: true,
+            },
+            orderBy: {
+                createdAt: 'asc',
             },
         });
     }
@@ -248,6 +272,17 @@ export class PlaybackService {
     async sendMessage(chatId: string, message: string) {
         await this.bot.telegram.sendMessage(chatId, message, {
             parse_mode: 'Markdown',
+        });
+    }
+
+    async sendMessageToRoomTopic(
+        chatId: string,
+        topicId: number | null,
+        message: string,
+    ) {
+        await this.bot.telegram.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            ...(topicId !== null ? { message_thread_id: topicId } : {}),
         });
     }
 

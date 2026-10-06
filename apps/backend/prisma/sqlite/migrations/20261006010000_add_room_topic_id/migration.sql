@@ -1,0 +1,1 @@
+ALTER TABLE "Room" ADD COLUMN "topicId" INTEGER;

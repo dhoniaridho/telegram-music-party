@@ -19,15 +19,19 @@ RUN pnpm build
 FROM base AS prod-deps
 
 RUN pnpm install --prod --frozen-lockfile
+# ytmusic-api does not use its Biome CLI dependency at runtime.
+RUN find node_modules/.pnpm -maxdepth 1 -type d -name '@biomejs+*' \
+    -exec rm -rf {} + \
+    && rm -rf node_modules/@biomejs node_modules/.pnpm/node_modules/@biomejs
 COPY prisma ./prisma
 RUN pnpm prisma:generate
 
-FROM node:23-alpine AS runtime
+FROM alpine:3.22 AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache nodejs openssl
 
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/prisma ./prisma

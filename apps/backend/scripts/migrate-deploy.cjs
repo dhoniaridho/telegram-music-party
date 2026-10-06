@@ -20,11 +20,11 @@ if (databaseProvider === 'postgresql') {
     throw new Error(`Unsupported DATABASE_PROVIDER "${databaseProvider}".`);
 }
 
-const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const prismaCli = require.resolve('prisma/build/index.js');
 const result = spawnSync(
-    command,
-    ['prisma', 'migrate', 'deploy', '--schema', schema],
-    { stdio: 'inherit', env: process.env, shell: process.platform === 'win32' },
+    process.execPath,
+    [prismaCli, 'migrate', 'deploy', '--schema', schema],
+    { stdio: 'inherit', env: process.env },
 );
 
 if (result.error) throw result.error;

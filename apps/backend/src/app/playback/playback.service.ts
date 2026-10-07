@@ -7,7 +7,10 @@ import { InlineKeyboardButton } from 'telegraf/typings/core/types/typegram';
 
 @Injectable()
 export class PlaybackService {
-    private readonly volumePanelMessages = new Map<string, number>();
+    private readonly volumePanelMessages = new Map<
+        string,
+        { messageId: number; topicId: number | null }
+    >();
     private readonly roomVolumes = new Map<string, number>();
 
     constructor(
@@ -121,9 +124,11 @@ export class PlaybackService {
     }
 
     async updateRoomTopic(chatId: string, topicId?: number) {
+        if (topicId === undefined) return;
+
         await this.prisma.room.updateMany({
             where: { chatId },
-            data: { topicId: topicId ?? null },
+            data: { topicId },
         });
     }
 
@@ -282,7 +287,7 @@ export class PlaybackService {
     ) {
         await this.bot.telegram.sendMessage(chatId, message, {
             parse_mode: 'Markdown',
-            ...(topicId !== null ? { message_thread_id: topicId } : {}),
+            ...(topicId != null ? { message_thread_id: topicId } : {}),
         });
     }
 
@@ -290,6 +295,7 @@ export class PlaybackService {
         chatId: string,
         message: string,
         imageUrl?: string,
+        topicId?: number | null,
     ) {
         const room = await this.getRoomByChatId(chatId);
         const feature = room?.Feature;
@@ -320,6 +326,7 @@ export class PlaybackService {
         if (audioControls.length) rows.push(audioControls);
         const options = {
             parse_mode: 'Markdown' as const,
+            ...(topicId != null ? { message_thread_id: topicId } : {}),
             ...Markup.inlineKeyboard(rows),
         };
         if (imageUrl) {
@@ -332,7 +339,11 @@ export class PlaybackService {
         await this.bot.telegram.sendMessage(chatId, message, options);
     }
 
-    async updateVolumePanelMessage(chatId: string, message: string) {
+    async updateVolumePanelMessage(
+        chatId: string,
+        topicId: number | null,
+        message: string,
+    ) {
         const isVolumeUpdate =
             /^🔊 Volume (increased|decreased)\./i.test(message) ||
             message.startsWith('🤫') ||
@@ -341,13 +352,19 @@ export class PlaybackService {
         if (volume) {
             this.roomVolumes.set(chatId, Math.min(100, Number(volume[1])));
         }
-        const messageId = this.volumePanelMessages.get(chatId);
-        if (!isVolumeUpdate || messageId === undefined) return false;
+        const panel = this.volumePanelMessages.get(chatId);
+        if (
+            !isVolumeUpdate ||
+            !panel ||
+            panel.topicId !== (topicId ?? null)
+        ) {
+            return false;
+        }
 
         try {
             await this.bot.telegram.editMessageText(
                 chatId,
-                messageId,
+                panel.messageId,
                 undefined,
                 message,
                 {
@@ -368,8 +385,15 @@ export class PlaybackService {
         }
     }
 
-    rememberVolumePanelMessage(chatId: string, messageId: number) {
-        this.volumePanelMessages.set(chatId, messageId);
+    rememberVolumePanelMessage(
+        chatId: string,
+        messageId: number,
+        topicId?: number | null,
+    ) {
+        this.volumePanelMessages.set(chatId, {
+            messageId,
+            topicId: topicId ?? null,
+        });
     }
 
     getVolumeControlsKeyboard(

@@ -107,8 +107,9 @@ export class PlaybackGateway {
             );
 
             // send message
-            await this.playbackService.sendMessage(
+            await this.playbackService.sendMessageToRoomTopic(
                 room.chatId,
+                room.topicId,
                 `${data.browser} joined`,
             );
         }
@@ -140,8 +141,9 @@ export class PlaybackGateway {
             return;
         }
 
-        await this.playbackService.sendMessage(
+        await this.playbackService.sendMessageToRoomTopic(
             device.room.chatId,
+            device.room.topicId,
             `${device.name} leaved`,
         );
 
@@ -216,16 +218,23 @@ export class PlaybackGateway {
                 room.chatId,
                 data.message,
                 imageUrl,
+                room.topicId,
             );
             return;
         }
 
-        const panelUpdated = await this.playbackService.updateVolumePanelMessage(
-            room.chatId,
-            data.message,
-        );
+        const panelUpdated =
+            await this.playbackService.updateVolumePanelMessage(
+                room.chatId,
+                room.topicId,
+                data.message,
+            );
         if (!panelUpdated) {
-            await this.playbackService.sendMessage(room.chatId, data.message);
+            await this.playbackService.sendMessageToRoomTopic(
+                room.chatId,
+                room.topicId,
+                data.message,
+            );
         }
     }
 }

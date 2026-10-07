@@ -352,6 +352,9 @@ export class PlaybackTelegramController {
             this.playbackService.rememberVolumePanelMessage(
                 ctx.chat.id.toString(),
                 callbackMessage.message_id,
+                'message_thread_id' in callbackMessage
+                    ? callbackMessage.message_thread_id
+                    : undefined,
             );
         }
         await ctx.answerCbQuery();
@@ -780,7 +783,8 @@ export class PlaybackTelegramController {
         }
 
         const volumeEnabled = room.Feature?.volumeCommand === true;
-        const panel = await ctx.reply(
+        const panel = await ctx.telegram.sendMessage(
+            chatId,
             [
                 '🔊 <b>Room volume</b>',
                 '',
@@ -791,6 +795,9 @@ export class PlaybackTelegramController {
             ].join('\n'),
             {
                 parse_mode: 'HTML',
+                ...(room.topicId != null
+                    ? { message_thread_id: room.topicId }
+                    : {}),
                 ...this.playbackService.getVolumeControlsKeyboard(
                     chatId,
                     room.Feature,
@@ -800,6 +807,7 @@ export class PlaybackTelegramController {
         this.playbackService.rememberVolumePanelMessage(
             chatId,
             panel.message_id,
+            room.topicId,
         );
     }
 
@@ -1504,21 +1512,19 @@ export class PlaybackTelegramController {
             }
         }
 
-        if (room.topicId !== null) {
-            try {
-                await this.playbackService.sendMessageToRoomTopic(
-                    room.chatId,
-                    room.topicId,
-                    `🎵 ${songCombined} added to the queue.`,
-                );
-            } catch (error) {
-                console.error('Could not post queue confirmation to topic:', {
-                    roomId,
-                    topicId: room.topicId,
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                });
-            }
+        try {
+            await this.playbackService.sendMessageToRoomTopic(
+                room.chatId,
+                room.topicId,
+                `🎵 ${songCombined} added to the queue.`,
+            );
+        } catch (error) {
+            console.error('Could not post queue confirmation:', {
+                roomId,
+                topicId: room.topicId,
+                message:
+                    error instanceof Error ? error.message : String(error),
+            });
         }
 
         this.gateway.addToQueueCommand(roomId, videoId);

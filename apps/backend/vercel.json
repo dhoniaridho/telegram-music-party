@@ -1,0 +1,10 @@
+{
+    "version": 2,
+    "framework": "nestjs",
+    "routes": [
+        {
+            "src": "/(.*)",
+            "dest": "/"
+        }
+    ]
+}

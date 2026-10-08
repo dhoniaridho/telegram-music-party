@@ -1329,7 +1329,7 @@ export class PlaybackTelegramController {
 
             const cacheExpireTime = 24 * 60 * 60 * 1000; // 24 hours
 
-            const videoIds: string[] = [];
+            const videoIds = new Set<string>();
 
             const songsToCache = songs.map((row) => ({
                 videoId: row.videoId,
@@ -1356,9 +1356,9 @@ export class PlaybackTelegramController {
             await ctx.answerInlineQuery(
                 songs
                     .filter((row) => {
-                        if (videoIds.includes(row.videoId)) return false;
+                        if (videoIds.has(row.videoId)) return false;
 
-                        videoIds.push(row.videoId);
+                        videoIds.add(row.videoId);
                         return true;
                     })
                     .map(

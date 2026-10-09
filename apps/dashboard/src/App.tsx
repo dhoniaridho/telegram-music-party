@@ -21,6 +21,7 @@ type Room = {
   chatId: string;
   createdAt: string;
   connectedClients: number;
+  playbackState?: "playing" | "paused" | "standby" | null;
   devices: Device[];
   votes: number;
   queue: Track[];
@@ -131,11 +132,12 @@ export default function App() {
   }, [roomId, loadRoom]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => { void loadRoom(); }, 10000);
+    const timer = window.setInterval(() => { void loadRoom(); }, 3000);
     return () => window.clearInterval(timer);
   }, [loadRoom]);
 
   const firstTrack = room?.queue[0];
+  const isPlaying = room?.playbackState === "playing";
   const artwork = firstTrack?.artwork ?? (firstTrack?.url ? `https://img.youtube.com/vi/${firstTrack.url}/hqdefault.jpg` : "");
   const queueTracks = useMemo(() => room?.queue ?? [], [room]);
 
@@ -204,6 +206,7 @@ export default function App() {
     setBusy(action);
     try {
       await request(`/api/rooms/${encodeURIComponent(room.id)}/control`, { method: "POST", body: JSON.stringify({ action }) });
+      if (action === "play" || action === "pause") window.setTimeout(() => void loadRoom(), 350);
       notify(action === "play" ? "Play command sent" : `${action.replace(/[A-Z]/g, (m) => ` ${m.toLowerCase()}`)} command sent`);
     } catch (err) { notify(err instanceof Error ? err.message : "Could not send command"); }
     finally { setBusy(""); }
@@ -399,12 +402,10 @@ export default function App() {
         <div className="player-track flex min-w-0 items-center gap-3"><div className="player-cover size-11 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">{artwork && <img src={artwork} alt="" className="size-full object-cover" />}</div><div className="player-track-copy grid min-w-0 gap-1 text-sm"><b>{firstTrack?.title ?? "Nothing queued"}</b><span className="text-blue-300">{firstTrack ? "Up next" : room.name}</span></div></div>
         <div className="player-controls flex items-center gap-1">
           <Button isIconOnly aria-label="Previous track" variant="ghost" isDisabled={!room.feature?.previousCommand || !room.connectedClients} onPress={() => void control("previous")}><Icon name="previous" size={17} /></Button>
-          <Button isIconOnly aria-label="Play" className="player-play size-14 min-h-14 min-w-14 rounded-full bg-blue-600 text-white hover:bg-blue-500" isPending={busy === "play"} isDisabled={!room.connectedClients} onPress={() => void control("play")}><Icon name="play" size={22} /></Button>
+          <Button isIconOnly aria-label={isPlaying ? "Pause" : "Play"} className="player-play size-14 min-h-14 min-w-14 rounded-full bg-blue-600 text-white hover:bg-blue-500" isPending={busy === "play" || busy === "pause"} isDisabled={!room.connectedClients} onPress={() => void control(isPlaying ? "pause" : "play")}><Icon name={isPlaying ? "pause" : "play"} size={28} /></Button>
           <Button isIconOnly aria-label="Next track" variant="ghost" isDisabled={!room.feature?.nextCommand || !room.connectedClients} onPress={() => void control("next")}><Icon name="next" size={17} /></Button>
-          <Button className="hidden max-sm:inline-flex" isIconOnly aria-label="Pause" variant="ghost" isDisabled={!room.connectedClients} onPress={() => void control("pause")}><Icon name="pause" size={16} /></Button>
         </div>
         <div className="player-tools flex items-center justify-self-end gap-1 max-sm:hidden">
-          <Button isIconOnly aria-label="Pause" variant="ghost" isDisabled={!room.connectedClients} onPress={() => void control("pause")}><Icon name="pause" size={16} /></Button>
           <Button isIconOnly aria-label="Turn volume down" variant="ghost" isDisabled={!room.feature?.volumeCommand || !room.connectedClients} onPress={() => void control("volumeDown")}><Icon name="volumeDown" size={17} /></Button>
           <Button isIconOnly aria-label="Turn volume up" variant="ghost" isDisabled={!room.feature?.volumeCommand || !room.connectedClients} onPress={() => void control("volumeUp")}><Icon name="volumeUp" size={17} /></Button>
           <Button isIconOnly aria-label="Mute player" variant="ghost" isDisabled={!room.feature?.muteCommand || !room.connectedClients} onPress={() => void control("mute")}><Icon name="mute" size={17} /></Button>

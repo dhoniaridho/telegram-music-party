@@ -446,9 +446,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     let queues: Queue[] = [];
+    let observedVideo: HTMLVideoElement | null = null;
+
+    const publishPlaybackState = (video: HTMLVideoElement) => {
+        const state = !video.src || video.ended
+            ? "standby"
+            : video.paused
+              ? "paused"
+              : "playing";
+        socket.emit("playbackState", { roomId: ROOM_ID, state });
+    };
+
+    const observePlaybackState = () => {
+        const video = document.querySelector(
+            "#movie_player > div.html5-video-container > video"
+        ) as HTMLVideoElement | null;
+        if (!video || video === observedVideo) return;
+
+        observedVideo = video;
+        ["play", "playing", "pause", "ended", "emptied", "loadstart"].forEach(
+            (eventName) => video.addEventListener(eventName, () => publishPlaybackState(video))
+        );
+        publishPlaybackState(video);
+    };
 
     socket.on("joined", async (data: Queue[]) => {
         queues = data;
+        observePlaybackState();
         if (data[0]) {
             play(data[0]);
         }
@@ -566,6 +590,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             ) {
                 setTimeout(() => {
                     const playback = getPlaybackState();
+                    if (playback.el) publishPlaybackState(playback.el);
 
                     const videoId = getVideoId();
 
@@ -597,6 +622,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     socket.on("play", () => {
+        observePlaybackState();
         const playback = getPlaybackState();
 
         if (playback.state == "standby" && queues[0]) {

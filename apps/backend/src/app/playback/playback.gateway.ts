@@ -29,6 +29,14 @@ export class PlaybackGateway implements OnGatewayDisconnect {
         return this.playbackStates.get(roomId) ?? null;
     }
 
+    private dashboardRoom(roomId: string) {
+        return `dashboard:${roomId}`;
+    }
+
+    notifyRoomUpdated(roomId: string) {
+        this.wss?.to(this.dashboardRoom(roomId)).emit('roomUpdated');
+    }
+
     async handleDisconnect(client: Socket) {
         const roomId = client.data.roomId as string | undefined;
         if (!roomId || !this.wss) return;
@@ -36,6 +44,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
         setTimeout(async () => {
             const clients = await this.wss.in(roomId).fetchSockets();
             if (clients.length === 0) this.playbackStates.delete(roomId);
+            this.notifyRoomUpdated(roomId);
         }, 0);
     }
 
@@ -95,11 +104,33 @@ export class PlaybackGateway implements OnGatewayDisconnect {
     addToQueueCommand(roomID: string, videoId: string) {
         console.log(`Emitting 'addToQueue' event to ${roomID}`);
         this.wss.to(roomID).emit('addToQueue', { videoId });
+        this.notifyRoomUpdated(roomID);
     }
 
     leave(roomID: string) {
         console.log(`Emitting 'leave' event to ${roomID}`);
         this.wss.to(roomID).emit('leave');
+    }
+
+    @SubscribeMessage('watchRoom')
+    async watchRoom(
+        @ConnectedSocket() socket: Socket,
+        @MessageBody() data: { roomId?: string },
+    ) {
+        const roomId = data.roomId?.trim();
+        if (!roomId || !(await this.playbackService.getRoom(roomId))) return;
+
+        await socket.join(this.dashboardRoom(roomId));
+        socket.emit('roomUpdated');
+    }
+
+    @SubscribeMessage('unwatchRoom')
+    async unwatchRoom(
+        @ConnectedSocket() socket: Socket,
+        @MessageBody() data: { roomId?: string },
+    ) {
+        const roomId = data.roomId?.trim();
+        if (roomId) await socket.leave(this.dashboardRoom(roomId));
     }
 
     @SubscribeMessage('join')
@@ -142,6 +173,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
         // emit join with queue
         const queues = await this.playbackService.getQueues(room.id);
         this.wss.to(room.id).emit('joined', queues);
+        this.notifyRoomUpdated(room.id);
 
         console.log('player joined', data.id);
     }
@@ -159,6 +191,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
             return;
         }
         this.playbackStates.set(data.roomId, data.state);
+        this.notifyRoomUpdated(data.roomId);
     }
 
     @SubscribeMessage('leave')
@@ -189,6 +222,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
 
         // remove device
         await this.playbackService.removeDevice(data.roomId, data.fingerprint);
+        this.notifyRoomUpdated(data.roomId);
 
         // void socket.leave(data.roomId);
     }
@@ -222,6 +256,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
 
         // clear votes
         await this.playbackService.removeRoomVotes(data.roomId);
+        this.notifyRoomUpdated(data.roomId);
     }
 
     @SubscribeMessage('notify')

@@ -513,6 +513,7 @@ export class PlaybackTelegramController {
 
         // remove room
         await this.playbackService.removeRoom(room.id);
+        this.gateway.notifyRoomUpdated(room.id);
 
         // emit leave
         this.gateway.leave(room.id);
@@ -905,6 +906,7 @@ export class PlaybackTelegramController {
         if (room.Votes.length + 1 >= MINIMUM_VOTE) {
             // emit next command
             this.gateway.nextCommand(room.id);
+            this.gateway.notifyRoomUpdated(room.id);
 
             await ctx.reply(
                 [
@@ -917,6 +919,7 @@ export class PlaybackTelegramController {
 
         // add vote
         await this.playbackService.addVote(room.id, userId);
+        this.gateway.notifyRoomUpdated(room.id);
 
         const randomText = [
             `We're at ${room.Votes.length + 1}/${MINIMUM_VOTE} votes for the next track—who's holding us up? 😄`,
@@ -1144,6 +1147,7 @@ export class PlaybackTelegramController {
             return;
         }
 
+        this.gateway.notifyRoomUpdated(updatedRoom.id);
         await ctx.answerCbQuery('Settings updated.');
         await ctx.editMessageText(
             this.formatFeatureMenu(updatedRoom.Feature),
@@ -1252,6 +1256,7 @@ export class PlaybackTelegramController {
         }
 
         await this.playbackService.setFeature(room.id, command, featureValue);
+        this.gateway.notifyRoomUpdated(room.id);
 
         await ctx.reply(`Set ${featureName} to ${featureValue}`);
     }

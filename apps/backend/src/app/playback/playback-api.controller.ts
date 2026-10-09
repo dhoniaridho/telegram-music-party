@@ -163,6 +163,7 @@ export class PlaybackApiController {
         await Promise.all(updates.map(([key, value]) =>
             this.playback.setFeature(roomId, key, value as number | boolean),
         ));
+        this.gateway.notifyRoomUpdated(roomId);
         return { ok: true };
     }
 
@@ -184,9 +185,11 @@ export class PlaybackApiController {
         if (votes + 1 >= minimumVotes) {
             this.gateway.nextCommand(roomId);
             await this.playback.removeRoomVotes(roomId);
+            this.gateway.notifyRoomUpdated(roomId);
             return { ok: true, passed: true, votes: minimumVotes, minimumVotes };
         }
         await this.playback.addVote(roomId, userId);
+        this.gateway.notifyRoomUpdated(roomId);
         return { ok: true, passed: false, votes: votes + 1, minimumVotes };
     }
 
@@ -196,6 +199,7 @@ export class PlaybackApiController {
         if (!room) throw new NotFoundException('Room not found');
         this.gateway.leave(roomId);
         await this.playback.removeRoom(roomId);
+        this.gateway.notifyRoomUpdated(roomId);
         return { ok: true };
     }
 
@@ -218,7 +222,7 @@ export class PlaybackApiController {
     @Post('rooms/:roomId/queue')
     async addToQueue(
         @Param('roomId') roomId: string,
-        @Body() body: { videoId?: string; handle?: string },
+        @Body() body: { videoId?: string; handle?: string; artwork?: string | null },
     ) {
         const videoId = body.videoId?.trim();
         if (!videoId) throw new BadRequestException('videoId is required');
@@ -237,7 +241,9 @@ export class PlaybackApiController {
         if (!handle || handle.length > 32) {
             throw new BadRequestException('Join this room with a handle before adding songs');
         }
-        await this.playback.addToQueue(roomId, videoId, title, handle);
+        const artwork = this.normalizeArtwork(body.artwork);
+        await this.playback.addToQueue(roomId, videoId, title, handle, artwork);
+        this.gateway.addToQueueCommand(roomId, videoId);
         return { ok: true };
     }
 
@@ -249,6 +255,7 @@ export class PlaybackApiController {
         const room = await this.playback.getRoom(roomId);
         if (!room) throw new NotFoundException('Room not found');
         await this.playback.removeQueue(roomId, videoId);
+        this.gateway.notifyRoomUpdated(roomId);
         return { ok: true };
     }
 
@@ -289,5 +296,36 @@ export class PlaybackApiController {
         }
         this.gateway[method](roomId);
         return { ok: true, action };
+    }
+
+    private normalizeArtwork(value?: string | null) {
+        if (value == null) return null;
+        if (typeof value !== 'string') {
+            throw new BadRequestException('Artwork URL is invalid');
+        }
+        if (!value.trim()) return null;
+
+        let url: URL;
+        try {
+            url = new URL(value.trim());
+        } catch {
+            throw new BadRequestException('Artwork URL is invalid');
+        }
+
+        const allowedDomains = [
+            'googleusercontent.com',
+            'ytimg.com',
+            'ggpht.com',
+            'youtube.com',
+        ];
+        const isAllowedDomain = allowedDomains.some(
+            (domain) =>
+                url.hostname === domain || url.hostname.endsWith(`.${domain}`),
+        );
+        if (url.protocol !== 'https:' || !isAllowedDomain) {
+            throw new BadRequestException('Artwork must use a YouTube image URL');
+        }
+
+        return url.toString();
     }
 }

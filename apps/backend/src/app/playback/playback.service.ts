@@ -23,6 +23,7 @@ export class PlaybackService {
         videoId: string,
         title: string,
         addedBy?: string,
+        artwork?: string | null,
     ) {
         await this.prisma.queue.create({
             data: {
@@ -30,6 +31,7 @@ export class PlaybackService {
                 url: videoId,
                 title: title,
                 addedBy,
+                artwork,
             },
         });
     }

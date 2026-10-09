@@ -1,0 +1,1 @@
+ALTER TABLE "Queue" ADD COLUMN "artwork" TEXT;

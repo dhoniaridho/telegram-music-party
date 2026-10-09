@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Label, Modal, Tabs, Toast } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { io } from "socket.io-client";
 import { IoAddOutline, IoDesktopOutline, IoListOutline, IoMusicalNotesOutline, IoPause, IoPlay, IoPlaySkipBack, IoPlaySkipForward, IoRefreshOutline, IoSearchOutline, IoSettingsOutline, IoTrashOutline, IoVolumeHighOutline, IoVolumeLowOutline, IoVolumeMediumOutline, IoVolumeMuteOutline } from "react-icons/io5";
 import type { IconType } from "react-icons";
 
@@ -132,9 +133,21 @@ export default function App() {
   }, [roomId, loadRoom]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => { void loadRoom(); }, 3000);
-    return () => window.clearInterval(timer);
-  }, [loadRoom]);
+    if (!roomId || joinedRoomId !== roomId || !handle.trim()) return;
+
+    const socket = io();
+    const watchRoom = () => socket.emit("watchRoom", { roomId });
+    const refreshRoom = () => { void loadRoom(); };
+
+    socket.on("connect", watchRoom);
+    socket.on("roomUpdated", refreshRoom);
+    if (socket.connected) watchRoom();
+
+    return () => {
+      socket.emit("unwatchRoom", { roomId });
+      socket.disconnect();
+    };
+  }, [roomId, joinedRoomId, handle, loadRoom]);
 
   const firstTrack = room?.queue[0];
   const isPlaying = room?.playbackState === "playing";
@@ -226,7 +239,7 @@ export default function App() {
     if (!room || !track.videoId) return;
     setBusy(track.videoId);
     try {
-      await request(`/api/rooms/${encodeURIComponent(room.id)}/queue`, { method: "POST", body: JSON.stringify({ videoId: track.videoId, handle }) });
+      await request(`/api/rooms/${encodeURIComponent(room.id)}/queue`, { method: "POST", body: JSON.stringify({ videoId: track.videoId, handle, artwork: track.artwork }) });
       notify("Added to the queue"); setResults((items) => items.filter((item) => item.videoId !== track.videoId)); void loadRoom();
     } catch (err) { notify(err instanceof Error ? err.message : "Could not add track"); }
     finally { setBusy(""); }
@@ -360,7 +373,7 @@ export default function App() {
                         {queueTracks.length ? <div className="divide-y divide-default">
                           {queueTracks.slice(0, 5).map((track, index) => <div className="group flex min-h-[4.25rem] items-center gap-3 py-2 transition-colors hover:bg-blue-500/10 focus-within:bg-blue-500/10" key={track.id ?? `${track.url}-${index}`}>
                             <span className="w-6 shrink-0 text-center text-xs font-semibold tabular-nums text-blue-300">{String(index + 1).padStart(2, "0")}</span>
-                            <div className="size-11 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">{track.url && <img className="size-full object-cover" src={`https://img.youtube.com/vi/${track.url}/default.jpg`} alt="" />}</div>
+                            <div className="size-11 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">{track.url && <img className="size-full object-cover" src={track.artwork ?? `https://img.youtube.com/vi/${track.url}/default.jpg`} alt="" />}</div>
                             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{track.title.split(" - ")[0]}</p><p className="truncate text-sm text-foreground/60">{track.title.includes(" - ") ? track.title.split(" - ").slice(1).join(" - ").replace(/\s\[.*\]$/, "") : "YouTube Music"}</p></div>
                             <span className="hidden max-w-28 truncate text-sm text-foreground/60 sm:block">{track.addedBy ?? "Web player"}</span>
                             <Button isIconOnly aria-label={`Remove ${track.title}`} variant="ghost" onPress={() => void removeTrack(track)}><Icon name="trash" size={16} /></Button>

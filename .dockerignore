@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.env
+apps/backend/prisma/generated
+apps/backend/public/extension.zip
+apps/extension
+.git
+.turbo
+coverage
+.DS_Store

@@ -44,6 +44,7 @@ model Queue {
     title     String
     url       String
     addedBy   String?
+    artwork   String?
     createdAt DateTime? @default(now())
     updatedAt DateTime  @updatedAt
 }

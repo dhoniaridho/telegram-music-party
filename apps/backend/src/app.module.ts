@@ -7,13 +7,16 @@ import { ENV } from './config/env';
 import { PrismaService } from './platform/prisma.service';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { KeyvProvider } from './providers/keyv.provider';
 
 @Global()
 @Module({
     imports: [
         ServeStaticModule.forRoot({
-            rootPath: join(__dirname, '..', 'public'),
+            rootPath: existsSync(join(__dirname, 'public'))
+                ? join(__dirname, 'public')
+                : join(__dirname, '..', 'public'),
         }),
         PlaybackModule,
         TelegrafModule.forRoot({

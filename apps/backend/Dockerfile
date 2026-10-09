@@ -1,45 +1,29 @@
-FROM node:23-alpine AS base
+FROM node:23-alpine AS build
 
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-
-RUN apk add --no-cache openssl \
-    && corepack enable \
-    && corepack prepare pnpm@10.6.2 --activate
-
+RUN corepack enable && apk add --no-cache openssl
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
 
-FROM base AS build
-
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/backend/package.json apps/backend/package.json
+COPY apps/dashboard/package.json apps/dashboard/package.json
+COPY apps/extension/package.json apps/extension/package.json
 RUN pnpm install --frozen-lockfile
+
 COPY . .
-RUN pnpm build
+RUN pnpm --filter backend build
 
-FROM base AS prod-deps
-
-RUN pnpm install --prod --frozen-lockfile
-# ytmusic-api does not use its Biome CLI dependency at runtime.
-RUN find node_modules/.pnpm -maxdepth 1 -type d -name '@biomejs+*' \
-    -exec rm -rf {} + \
-    && rm -rf node_modules/@biomejs node_modules/.pnpm/node_modules/@biomejs
-COPY prisma ./prisma
-RUN pnpm prisma:generate
-
-FROM alpine:3.22 AS runtime
+FROM node:23-alpine AS runtime
 
 ENV NODE_ENV=production
-WORKDIR /app
+RUN apk add --no-cache openssl
+WORKDIR /app/apps/backend
 
-RUN apk add --no-cache nodejs openssl
-
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=prod-deps /app/prisma ./prisma
-COPY --from=build /app/dist ./dist
-COPY public /public
-COPY docker ./docker
-COPY scripts ./scripts
+COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/apps/backend/dist ./dist
+COPY --from=build /app/apps/backend/prisma ./prisma
+COPY --from=build /app/apps/backend/scripts ./scripts
+COPY --from=build /app/apps/backend/docker ./docker
+COPY --from=build /app/apps/backend/public ./public
 
 RUN chmod +x ./docker/run.sh
-
 ENTRYPOINT ["./docker/run.sh"]

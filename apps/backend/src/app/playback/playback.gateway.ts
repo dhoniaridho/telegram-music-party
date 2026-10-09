@@ -1,6 +1,7 @@
 import {
     ConnectedSocket,
     MessageBody,
+    OnGatewayDisconnect,
     SubscribeMessage,
     WebSocketGateway,
     WebSocketServer,
@@ -12,12 +13,31 @@ import { from, map } from 'rxjs';
 import { YTMusicService } from 'src/platform/yt-music.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
-export class PlaybackGateway {
+export class PlaybackGateway implements OnGatewayDisconnect {
+    private readonly playbackStates = new Map<
+        string,
+        'playing' | 'paused' | 'standby'
+    >();
+
     constructor(
         private readonly playbackService: PlaybackService,
         private readonly ytmusicService: YTMusicService,
     ) {}
     @WebSocketServer() wss: Server;
+
+    getPlaybackState(roomId: string) {
+        return this.playbackStates.get(roomId) ?? null;
+    }
+
+    async handleDisconnect(client: Socket) {
+        const roomId = client.data.roomId as string | undefined;
+        if (!roomId || !this.wss) return;
+
+        setTimeout(async () => {
+            const clients = await this.wss.in(roomId).fetchSockets();
+            if (clients.length === 0) this.playbackStates.delete(roomId);
+        }, 0);
+    }
 
     // Function to emit events from the server
     playCommand(roomID: string) {
@@ -107,20 +127,38 @@ export class PlaybackGateway {
             );
 
             // send message
-            await this.playbackService.sendMessageToRoomTopic(
-                room.chatId,
-                room.topicId,
-                `${data.browser} joined`,
-            );
+            if (room.chatId) {
+                await this.playbackService.sendMessageToRoomTopic(
+                    room.chatId,
+                    room.topicId,
+                    `${data.browser} joined`,
+                );
+            }
         }
 
-        void socket.join(room.id);
+        socket.data.roomId = room.id;
+        await socket.join(room.id);
 
         // emit join with queue
         const queues = await this.playbackService.getQueues(room.id);
         this.wss.to(room.id).emit('joined', queues);
 
         console.log('player joined', data.id);
+    }
+
+    @SubscribeMessage('playbackState')
+    onPlaybackState(
+        @ConnectedSocket() socket: Socket,
+        @MessageBody()
+        data: { roomId: string; state: 'playing' | 'paused' | 'standby' },
+    ) {
+        if (
+            socket.data.roomId !== data.roomId ||
+            !['playing', 'paused', 'standby'].includes(data.state)
+        ) {
+            return;
+        }
+        this.playbackStates.set(data.roomId, data.state);
     }
 
     @SubscribeMessage('leave')
@@ -141,11 +179,13 @@ export class PlaybackGateway {
             return;
         }
 
-        await this.playbackService.sendMessageToRoomTopic(
-            device.room.chatId,
-            device.room.topicId,
-            `${device.name} leaved`,
-        );
+        if (device.room.chatId) {
+            await this.playbackService.sendMessageToRoomTopic(
+                device.room.chatId,
+                device.room.topicId,
+                `${device.name} leaved`,
+            );
+        }
 
         // remove device
         await this.playbackService.removeDevice(data.roomId, data.fingerprint);
@@ -193,6 +233,8 @@ export class PlaybackGateway {
             console.log('Room not found');
             return;
         }
+
+        if (!room.chatId) return;
 
         if (/^Now playing:/i.test(data.message)) {
             let imageUrl: string | undefined;

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "turbo build",
+    "build": "pnpm --filter extension build && pnpm --filter backend build",
     "dev": "turbo dev"
   },
   "keywords": [],

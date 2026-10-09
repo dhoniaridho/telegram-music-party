@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "node scripts/migrate-deploy.cjs && nest start --watch",
-    "build": "pnpm prisma:generate && nest build",
+    "build": "pnpm prisma:generate && nest build && pnpm --filter dashboard build && node scripts/copy-static-assets.cjs",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma && prisma generate --schema prisma/sqlite/schema.prisma",
     "db:migrate": "node scripts/migrate-deploy.cjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

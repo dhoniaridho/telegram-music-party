@@ -25,6 +25,22 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Music dashboard
+
+The React dashboard is served from the backend root URL. In development, run
+`pnpm --filter dashboard dev` alongside the backend. A production build writes
+the compiled UI to `apps/backend/dist/public` after the Nest build completes.
+For Docker, build from the monorepo root with `docker build -f apps/backend/Dockerfile .`.
+
+Room dashboards and player joins use the room ID as their public access code. Join
+from the dashboard with a handle; the handle is shown beside songs that person adds.
+Anyone with a room ID can view its queue and control playback, so share room IDs
+only with people you want to participate.
+
+Room setup is a two-step API flow: `POST /api/rooms/generate` returns an
+available room code, then `POST /api/rooms` creates the named room with that
+code in its request body.
+
 ## Project setup
 
 ```bash

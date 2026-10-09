@@ -1317,7 +1317,9 @@ export class PlaybackTelegramController {
             const songs = await this.ytmusicService.searchSongs(searchQuery);
 
             const senderID = ctx.from.id;
-            const rooms = await this.playbackService.getRooms();
+            const rooms = (await this.playbackService.getRooms()).filter(
+                (room) => room.chatId,
+            );
             if (rooms.length === 0) {
                 await ctx.answerInlineQuery([], {
                     cache_time: 0,

@@ -139,6 +139,7 @@ export class PlaybackService {
             },
             include: {
                 Feature: true,
+                Devices: true,
             },
         });
     }
@@ -147,6 +148,7 @@ export class PlaybackService {
         return this.prisma.room.findMany({
             include: {
                 Feature: true,
+                Devices: true,
             },
             orderBy: {
                 createdAt: 'asc',
@@ -202,6 +204,12 @@ export class PlaybackService {
     }
 
     async removeRoom(roomId: string) {
+        await this.prisma.vote.deleteMany({
+            where: {
+                roomId,
+            },
+        });
+
         await this.prisma.device.deleteMany({
             where: {
                 roomId,
@@ -253,6 +261,13 @@ export class PlaybackService {
         });
 
         return count;
+    }
+
+    async hasVote(roomId: string, userId: string) {
+        return !!(await this.prisma.vote.findFirst({
+            where: { roomId, userId },
+            select: { id: true },
+        }));
     }
 
     async removeRoomVotes(roomId: string) {

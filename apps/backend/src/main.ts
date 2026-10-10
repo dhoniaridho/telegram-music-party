@@ -3,14 +3,12 @@ import { AppModule } from './app.module';
 import { getBotToken } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
 
-async function bootstrap() {
+export async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
-    // bot Telegraf instance
-    const bot = app.get<Telegraf>(getBotToken());
-
-    // Set commands
-    void bot.telegram.setMyCommands([
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+        const bot = app.get<Telegraf>(getBotToken());
+        void bot.telegram.setMyCommands([
         { command: 'start', description: 'Open party controls and setup' },
         { command: 'menu', description: 'Open interactive controls' },
         { command: 'help', description: 'Show commands and setup help' },
@@ -32,8 +30,19 @@ async function bootstrap() {
         { command: 'unregister', description: 'Disconnect this group' },
         { command: 'set', description: 'Change one room setting' },
         { command: 'config', description: 'Open interactive room settings' },
-    ]);
+        ]);
+    }
 
-    await app.listen(process.env.PORT ?? 3000);
+    const localOnly = process.env.DESKTOP_LOCAL_SERVER === '1';
+    app.enableCors({ origin: ['https://music.youtube.com'], credentials: true });
+    if (localOnly) {
+        await app.listen(process.env.PORT ?? 3000, '127.0.0.1');
+    } else {
+        await app.listen(process.env.PORT ?? 3000);
+    }
+    if (localOnly) {
+        console.log(`DESKTOP_SERVER_READY:${process.env.PORT ?? 3000}`);
+    }
 }
-void bootstrap();
+
+if (require.main === module) void bootstrap();

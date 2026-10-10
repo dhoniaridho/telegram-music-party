@@ -73,4 +73,72 @@ jobs:
               --verify-tag \
               --generate-notes \
               --title "$GITHUB_REF_NAME"
+
+  desktop:
+    name: Package desktop app (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: macos
+          - os: windows-latest
+            artifact: windows
+          - os: ubuntu-latest
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop installers
+        run: pnpm desktop:package
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.artifact }}
+          path: apps/desktop/out/make/**
+          if-no-files-found: error
+
+  attach-desktop:
+    name: Attach desktop installers to release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: desktop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download desktop installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Upload installers to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s globstar nullglob
+          assets=(release-assets/**/*)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No desktop installers were produced" >&2
+            exit 1
+          fi
+          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           fi

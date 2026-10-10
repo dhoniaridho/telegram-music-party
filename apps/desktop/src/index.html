@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <title>Music Party</title>
+    <link rel="stylesheet" href="./shell.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand" aria-label="Music Party">MP</div>
+      <nav class="tabs" aria-label="App pages">
+        <button class="tab is-active" type="button" data-view="music" aria-selected="true">YouTube Music</button>
+        <button class="tab" type="button" data-view="dashboard" aria-selected="false">Party dashboard</button>
+      </nav>
+      <div class="toolbar-end">
+        <span class="blocking-status"><span class="status-dot" aria-hidden="true"></span>Ad blocking on</span>
+        <button class="server-settings" type="button">Server</button>
+        <button class="reload" type="button" title="Reload current page" aria-label="Reload current page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4.6 9A7.5 7.5 0 0 1 18 6l2 2M4 17v-5h5m10.4 3A7.5 7.5 0 0 1 6 18l-2-2" /></svg>
+        </button>
+      </div>
+    </header>
+    <dialog class="settings-dialog" aria-labelledby="settings-title">
+      <form class="settings-form">
+        <div class="dialog-heading">
+          <h1 id="settings-title">Party server</h1>
+          <button class="dialog-close" type="button" aria-label="Close server settings">×</button>
+        </div>
+        <p class="settings-copy">Use the public server to share rooms with other listeners. The token below applies only to this computer’s local server.</p>
+        <label for="server-url">Server URL</label>
+        <input id="server-url" name="serverUrl" type="url" required autocomplete="url" />
+        <div class="public-server-choice">
+          <span>Public server: <code>https://party.dhoniaridho.com</code></span>
+          <button class="public-server-button" type="button">Use public server</button>
+        </div>
+        <label class="token-label" for="telegram-token">Telegram bot token</label>
+        <div class="token-input-row">
+          <input id="telegram-token" name="telegramBotToken" type="password" autocomplete="off" spellcheck="false" />
+          <button class="token-visibility" type="button" aria-controls="telegram-token" aria-pressed="false">Show</button>
+        </div>
+        <p class="field-help">Optional. Paste the value of <code>TELEGRAM_BOT_TOKEN</code>. Saving a change restarts the local server.</p>
+        <p class="settings-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="cancel-button" type="button">Cancel</button>
+          <button class="save-button" type="submit">Save settings</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="./shell.js"></script>
+  </body>
+</html>

@@ -9,6 +9,16 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { KeyvProvider } from './providers/keyv.provider';
+import { getBotToken } from 'nestjs-telegraf';
+
+const telegramUnavailable = {
+    telegram: new Proxy(
+        {},
+        {
+            get: () => async () => undefined,
+        },
+    ),
+};
 
 @Global()
 @Module({
@@ -19,12 +29,23 @@ import { KeyvProvider } from './providers/keyv.provider';
                 : join(__dirname, '..', 'public'),
         }),
         PlaybackModule,
-        TelegrafModule.forRoot({
-            token: ENV.TELEGRAM_BOT_TOKEN,
-        }),
+        ...(ENV.TELEGRAM_BOT_TOKEN
+            ? [TelegrafModule.forRoot({ token: ENV.TELEGRAM_BOT_TOKEN })]
+            : []),
     ],
     controllers: [AppController],
-    providers: [AppService, PrismaService, KeyvProvider],
-    exports: [PrismaService, 'KEYV_CACHE'],
+    providers: [
+        AppService,
+        PrismaService,
+        KeyvProvider,
+        ...(!ENV.TELEGRAM_BOT_TOKEN
+            ? [{ provide: getBotToken(), useValue: telegramUnavailable }]
+            : []),
+    ],
+    exports: [
+        PrismaService,
+        'KEYV_CACHE',
+        ...(!ENV.TELEGRAM_BOT_TOKEN ? [getBotToken()] : []),
+    ],
 })
 export class AppModule {}

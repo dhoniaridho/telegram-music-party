@@ -49,6 +49,10 @@ git push origin v1.0.0
 
 The images will be available as `ghcr.io/<owner>/<repository>:main`, `:latest`, and (for tagged releases) `:v1.0.0`.
 
+## Desktop app
+
+The Electron app combines YouTube Music, the party dashboard, the bundled local API server, and a preconfigured ad blocker. See [apps/desktop/README.md](apps/desktop/README.md) for development and packaging instructions.
+
 ## Storage
 
 By default, the backend stores data in SQLite at `apps/backend/prisma/local.db` and uses an in-memory cache. Copy `apps/backend/.env.example` to `apps/backend/.env` to customize the setup.

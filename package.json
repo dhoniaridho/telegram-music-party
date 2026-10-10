@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "build": "pnpm --filter extension build && pnpm --filter backend build",
-    "dev": "turbo dev"
+    "dev": "turbo dev",
+    "desktop:dev": "pnpm --filter extension build && pnpm --filter backend build && pnpm --filter desktop start",
+    "desktop:package": "pnpm --filter extension build && pnpm --filter backend build && pnpm --filter desktop make"
   },
   "keywords": [],
   "author": "",

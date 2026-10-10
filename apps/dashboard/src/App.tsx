@@ -1,5 +1,5 @@
 import { Button, Card, Checkbox, Form, Input, Label, Modal, Tabs, Toast } from "@heroui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { IoAddOutline, IoDesktopOutline, IoListOutline, IoMusicalNotesOutline, IoPause, IoPlay, IoPlaySkipBack, IoPlaySkipForward, IoRefreshOutline, IoSearchOutline, IoSettingsOutline, IoTrashOutline, IoVolumeHighOutline, IoVolumeLowOutline, IoVolumeMediumOutline, IoVolumeMuteOutline } from "react-icons/io5";
 import type { IconType } from "react-icons";
@@ -93,6 +93,8 @@ function notify(message: string) {
 }
 
 export default function App() {
+  const inviteRoomId = new URLSearchParams(window.location.search).get("room")?.trim() ?? "";
+  const inviteJoinStarted = useRef(false);
   const [roomId, setRoomId] = useState(localStorage.getItem("music-party-joined-room") ?? "");
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
@@ -297,17 +299,38 @@ export default function App() {
     }
   };
 
+  const joinRoomByCode = useCallback(async (code: string, participantHandle: string) => {
+    const joined = await request<{ id: string; name: string; handle: string }>(`/api/rooms/${encodeURIComponent(code.trim())}/join`, { method: "POST", body: JSON.stringify({ handle: participantHandle.trim() }) });
+    localStorage.setItem("music-party-handle", joined.handle);
+    localStorage.setItem("music-party-joined-room", joined.id);
+    localStorage.setItem("music-party-room", joined.id);
+    setLoading(true); setRoom(null); setError("");
+    setHandle(joined.handle); setJoinHandle(joined.handle); setJoinedRoomId(joined.id); setRoomId(joined.id); setJoinOpen(false); notify(`Joined ${joined.name} as ${joined.handle}`);
+  }, []);
+
   const joinRoom = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      const joined = await request<{ id: string; name: string; handle: string }>(`/api/rooms/${encodeURIComponent(joinCode.trim())}/join`, { method: "POST", body: JSON.stringify({ handle: joinHandle.trim() }) });
-      localStorage.setItem("music-party-handle", joined.handle);
-      localStorage.setItem("music-party-joined-room", joined.id);
-      localStorage.setItem("music-party-room", joined.id);
-      setLoading(true); setRoom(null); setError("");
-      setHandle(joined.handle); setJoinHandle(joined.handle); setJoinedRoomId(joined.id); setRoomId(joined.id); setJoinOpen(false); notify(`Joined ${joined.name} as ${joined.handle}`);
+      await joinRoomByCode(joinCode, joinHandle);
     } catch (err) { notify(err instanceof Error ? err.message : "Could not join room"); }
   };
+
+  useEffect(() => {
+    if (!inviteRoomId || inviteJoinStarted.current) return;
+    inviteJoinStarted.current = true;
+    const savedHandle = localStorage.getItem("music-party-handle")?.trim();
+    const participantHandle = savedHandle || `Guest-${crypto.randomUUID().slice(0, 8)}`;
+    setJoinCode(inviteRoomId);
+    setJoinHandle(participantHandle);
+    void joinRoomByCode(inviteRoomId, participantHandle).then(() => {
+      const inviteUrl = new URL(window.location.href);
+      inviteUrl.searchParams.delete("room");
+      window.history.replaceState(window.history.state, "", `${inviteUrl.pathname}${inviteUrl.search}${inviteUrl.hash}`);
+    }).catch((err) => {
+      setLoading(false);
+      setError(err instanceof Error ? err.message : "Could not join the invited room.");
+    });
+  }, [inviteRoomId, joinRoomByCode]);
 
   const createRoom = async (event: React.FormEvent) => {
     event.preventDefault();

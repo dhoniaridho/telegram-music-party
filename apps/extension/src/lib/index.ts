@@ -360,6 +360,7 @@ function createButton({
 type RoomDialogOptions = {
     title: string;
     rows?: Array<{ label: string; value: string }>;
+    content?: Node;
     fields?: Array<{
         name: string;
         label: string;
@@ -404,6 +405,43 @@ function showRoomDialog(options: RoomDialogOptions) {
                 overflow-y: auto;
                 padding: 16px 24px 24px;
             }
+            .ytmp-room-settings { display: grid; gap: 10px; }
+            .ytmp-room-settings__row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                min-height: 38px;
+                color: #f1f1f1;
+            }
+            .ytmp-room-settings__row label { cursor: pointer; }
+            .ytmp-room-settings__stepper { display: flex; align-items: center; gap: 10px; }
+            .ytmp-room-settings__stepper button {
+                width: 36px;
+                height: 36px;
+                border: 1px solid #777;
+                border-radius: 50%;
+                color: #f1f1f1;
+                background: #383838;
+                font: inherit;
+                cursor: pointer;
+            }
+            .ytmp-room-settings__stepper button:disabled { opacity: .5; cursor: default; }
+            .ytmp-room-settings__error { margin: 0; color: #ff8a8a; }
+            .ytmp-room-settings__share {
+                min-height: 40px;
+                border: 0;
+                border-radius: 20px;
+                padding: 0 14px;
+                color: #3ea6ff;
+                background: rgba(62, 166, 255, .12);
+                font: 500 14px Roboto, Arial, sans-serif;
+                cursor: pointer;
+            }
+            .ytmp-room-settings__share:hover { background: rgba(62, 166, 255, .2); }
+            .ytmp-room-settings__share:focus-visible { outline: 2px solid #3ea6ff; outline-offset: 2px; }
+            .ytmp-room-settings input:focus-visible,
+            .ytmp-room-settings button:focus-visible { outline: 2px solid #3ea6ff; outline-offset: 2px; }
             .ytmp-room-dialog__row, .ytmp-room-dialog__field {
                 display: grid;
                 gap: 6px;
@@ -510,6 +548,7 @@ function showRoomDialog(options: RoomDialogOptions) {
         body.append(fieldElement);
         inputs.set(field.name, input);
     }
+    if (options.content) body.append(options.content);
     form.append(body);
 
     const actions = document.createElement("footer");
@@ -553,6 +592,187 @@ function showRoomDialog(options: RoomDialogOptions) {
     document.body.append(dialog);
     dialog.showModal();
     (inputs.values().next().value as HTMLInputElement | undefined)?.focus();
+}
+
+type RoomSettings = {
+    id: string;
+    name: string;
+    chatId: string;
+    createdAt: string;
+    feature: {
+        minimumVotes: number;
+        maxQueueSize: number;
+        nextCommand: boolean;
+        nextOnlyAdmin: boolean;
+        previousCommand: boolean;
+        previousOnlyAdmin: boolean;
+        volumeCommand: boolean;
+        muteCommand: boolean;
+        unmuteCommand: boolean;
+        silentNotifications: boolean;
+    };
+};
+
+async function requestRoomSettings(config: ReturnType<typeof getConfig>, update?: Record<string, number | boolean>) {
+    if (!config.roomId) throw new Error("Join a room before changing its settings.");
+    const baseUrl = (config.partyUrl || DEFAULT_PARTY_URL).replace(/\/$/, "");
+    const response = await fetch(`${baseUrl}/api/rooms/${encodeURIComponent(config.roomId)}${update ? "/settings" : ""}`, {
+        method: update ? "PATCH" : "GET",
+        headers: update ? { "Content-Type": "application/json" } : undefined,
+        body: update ? JSON.stringify(update) : undefined,
+    });
+    if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(typeof result.message === "string" ? result.message : "Could not reach the room server.");
+    }
+    return response.json() as Promise<RoomSettings | { ok: boolean }>;
+}
+
+function createRoomSettingsContent(config: ReturnType<typeof getConfig>, room: RoomSettings) {
+    const content = document.createElement("div");
+    content.className = "ytmp-room-settings";
+    const error = document.createElement("p");
+    error.className = "ytmp-room-settings__error";
+    error.setAttribute("role", "alert");
+    const busy = new Set<string>();
+
+    const save = async (key: string, value: number | boolean, control: HTMLInputElement | HTMLButtonElement) => {
+        if (busy.has(key)) return;
+        busy.add(key);
+        content.querySelectorAll<HTMLInputElement | HTMLButtonElement>(`[data-setting="${key}"]`).forEach((field) => { field.disabled = true; });
+        error.textContent = "";
+        try {
+            await requestRoomSettings(config, { [key]: value });
+            if (key === "minimumVotes" || key === "maxQueueSize") {
+                room.feature[key] = value as number;
+                const valueLabel = content.querySelector(`[data-value="${key}"]`);
+                if (valueLabel) valueLabel.textContent = String(value);
+                const minusButton = content.querySelector<HTMLButtonElement>(`[data-step="${key}:-1"]`);
+                if (minusButton) minusButton.disabled = typeof value === "number" && value <= 1;
+            }
+        } catch (caught) {
+            error.textContent = caught instanceof Error ? caught.message : "Could not update room settings.";
+            if (control instanceof HTMLInputElement) control.checked = !value;
+        } finally {
+            busy.delete(key);
+            content.querySelectorAll<HTMLInputElement | HTMLButtonElement>(`[data-setting="${key}"]`).forEach((field) => { field.disabled = false; });
+            if (key === "minimumVotes" || key === "maxQueueSize") {
+                const minusButton = content.querySelector<HTMLButtonElement>(`[data-step="${key}:-1"]`);
+                if (minusButton) minusButton.disabled = room.feature[key] <= 1;
+            }
+        }
+    };
+
+    const addStepper = (label: string, key: "minimumVotes" | "maxQueueSize", step: number) => {
+        const row = document.createElement("div");
+        row.className = "ytmp-room-settings__row";
+        const title = document.createElement("span");
+        title.textContent = label;
+        const stepper = document.createElement("div");
+        stepper.className = "ytmp-room-settings__stepper";
+        for (const delta of [-step, step]) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = delta < 0 ? "−" : "+";
+            button.setAttribute("aria-label", `${delta < 0 ? "Decrease" : "Increase"} ${label.toLowerCase()}`);
+            button.dataset.setting = key;
+            button.dataset.step = `${key}:${delta < 0 ? "-1" : "1"}`;
+            button.disabled = delta < 0 && room.feature[key] <= 1;
+            button.addEventListener("click", () => void save(key, Math.max(1, room.feature[key] + delta), button));
+            stepper.append(button);
+        }
+        const value = document.createElement("b");
+        value.dataset.value = key;
+        value.setAttribute("aria-live", "polite");
+        value.textContent = String(room.feature[key]);
+        stepper.insertBefore(value, stepper.lastChild);
+        row.append(title, stepper);
+        content.append(row);
+    };
+
+    const addToggle = (label: string, key: keyof RoomSettings["feature"]) => {
+        const row = document.createElement("div");
+        row.className = "ytmp-room-settings__row";
+        const text = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = Boolean(room.feature[key]);
+        input.dataset.setting = key;
+        input.addEventListener("change", () => void save(key, input.checked, input));
+        text.append(input, document.createTextNode(` ${label}`));
+        row.append(text);
+        content.append(row);
+    };
+
+    const shareButton = document.createElement("button");
+    shareButton.className = "ytmp-room-settings__share";
+    shareButton.type = "button";
+    shareButton.textContent = "Copy invite link";
+    shareButton.addEventListener("click", async () => {
+        const baseUrl = config.partyUrl || DEFAULT_PARTY_URL;
+        try {
+            const url = new URL(baseUrl);
+            if (["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+                throw new Error("This room is on the private local server. Switch to the public server and create a shared room there before sharing.");
+            }
+            url.pathname = "/";
+            url.search = "";
+            url.searchParams.set("room", room.id);
+            await navigator.clipboard.writeText(url.toString());
+            shareButton.textContent = "Invite link copied";
+            window.setTimeout(() => { shareButton.textContent = "Copy invite link"; }, 1800);
+            error.textContent = "";
+        } catch (caught) {
+            error.textContent = caught instanceof Error ? caught.message : "Could not copy the invite link.";
+        }
+    });
+
+    content.append(shareButton);
+    addStepper("Minimum skip votes", "minimumVotes", 1);
+    addStepper("Maximum queue size", "maxQueueSize", 5);
+    addToggle("/next and skip voting", "nextCommand");
+    addToggle("Next command admin-only", "nextOnlyAdmin");
+    addToggle("/prev", "previousCommand");
+    addToggle("Previous command admin-only", "previousOnlyAdmin");
+    addToggle("Volume controls", "volumeCommand");
+    addToggle("/mute", "muteCommand");
+    addToggle("/unmute", "unmuteCommand");
+    addToggle("Silent Telegram notifications", "silentNotifications");
+    content.append(error);
+    return content;
+}
+
+function createButtonRoomSettings() {
+    if (!navigator.userAgent.includes("Electron/")) return;
+    setTimeout(() => {
+        const btn = createButton({
+            children: "Room Settings",
+            join: false,
+            onClick: async () => {
+                const config = getConfig();
+                try {
+                    const room = await requestRoomSettings(config) as RoomSettings;
+                    showRoomDialog({
+                        title: "Room Settings",
+                        rows: [
+                            { label: "Room ID", value: room.id },
+                            { label: "Created", value: new Date(room.createdAt).toLocaleString() },
+                            { label: "Telegram", value: room.chatId || "Not linked" },
+                        ],
+                        content: createRoomSettingsContent(config, room),
+                    });
+                } catch (error) {
+                    showRoomDialog({
+                        title: "Room Settings",
+                        rows: [{ label: "Settings unavailable", value: error instanceof Error ? error.message : "Could not load room settings." }],
+                    });
+                }
+            },
+        });
+        document
+            .querySelector("[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']")
+            ?.append(btn);
+    }, 2000);
 }
 
 function createButtonLeave(
@@ -803,6 +1023,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (config.partyUrl && config.roomId) {
         createButtonLeave(socket, config);
+        createButtonRoomSettings();
     } else {
         createJoinButton();
     }

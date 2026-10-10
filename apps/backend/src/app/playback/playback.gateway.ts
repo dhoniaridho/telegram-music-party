@@ -12,12 +12,20 @@ import { Join } from 'src/types/playback.type';
 import { from, map } from 'rxjs';
 import { YTMusicService } from 'src/platform/yt-music.service';
 
+type NowPlaying = {
+    videoId: string | null;
+    title: string;
+    artist: string;
+    artwork: string | null;
+};
+
 @WebSocketGateway({ cors: { origin: '*' } })
 export class PlaybackGateway implements OnGatewayDisconnect {
     private readonly playbackStates = new Map<
         string,
         'playing' | 'paused' | 'standby'
     >();
+    private readonly currentlyPlaying = new Map<string, NowPlaying | null>();
 
     constructor(
         private readonly playbackService: PlaybackService,
@@ -29,12 +37,25 @@ export class PlaybackGateway implements OnGatewayDisconnect {
         return this.playbackStates.get(roomId) ?? null;
     }
 
+    getCurrentlyPlaying(roomId: string) {
+        return this.currentlyPlaying.get(roomId) ?? null;
+    }
+
     private dashboardRoom(roomId: string) {
         return `dashboard:${roomId}`;
     }
 
-    notifyRoomUpdated(roomId: string) {
-        this.wss?.to(this.dashboardRoom(roomId)).emit('roomUpdated');
+    notifyRoomUpdated(
+        roomId: string,
+        joinedDevice?: string,
+        playbackState?: 'playing' | 'paused' | 'standby' | null,
+        currentlyPlaying?: NowPlaying | null,
+    ) {
+        this.wss?.to(this.dashboardRoom(roomId)).emit('roomUpdated', {
+            joinedDevice,
+            ...(playbackState !== undefined ? { playbackState } : {}),
+            ...(currentlyPlaying !== undefined ? { currentlyPlaying } : {}),
+        });
     }
 
     async handleDisconnect(client: Socket) {
@@ -43,7 +64,12 @@ export class PlaybackGateway implements OnGatewayDisconnect {
 
         setTimeout(async () => {
             const clients = await this.wss.in(roomId).fetchSockets();
-            if (clients.length === 0) this.playbackStates.delete(roomId);
+            if (clients.length === 0) {
+                this.playbackStates.delete(roomId);
+                this.currentlyPlaying.delete(roomId);
+                this.notifyRoomUpdated(roomId, undefined, null, null);
+                return;
+            }
             this.notifyRoomUpdated(roomId);
         }, 0);
     }
@@ -148,6 +174,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
             room.id,
             data.fingerprint,
         );
+        let joinedDevice: string | undefined;
 
         if (!device) {
             // add device
@@ -156,6 +183,7 @@ export class PlaybackGateway implements OnGatewayDisconnect {
                 data.fingerprint,
                 data.browser,
             );
+            joinedDevice = data.browser?.trim() || 'A player';
 
             // send message
             if (room.chatId) {
@@ -172,8 +200,8 @@ export class PlaybackGateway implements OnGatewayDisconnect {
 
         // emit join with queue
         const queues = await this.playbackService.getQueues(room.id);
-        this.wss.to(room.id).emit('joined', queues);
-        this.notifyRoomUpdated(room.id);
+        socket.emit('joined', queues);
+        this.notifyRoomUpdated(room.id, joinedDevice);
 
         console.log('player joined', data.id);
     }
@@ -182,7 +210,11 @@ export class PlaybackGateway implements OnGatewayDisconnect {
     onPlaybackState(
         @ConnectedSocket() socket: Socket,
         @MessageBody()
-        data: { roomId: string; state: 'playing' | 'paused' | 'standby' },
+        data: {
+            roomId: string;
+            state: 'playing' | 'paused' | 'standby';
+            currentlyPlaying?: NowPlaying | null;
+        },
     ) {
         if (
             socket.data.roomId !== data.roomId ||
@@ -191,7 +223,15 @@ export class PlaybackGateway implements OnGatewayDisconnect {
             return;
         }
         this.playbackStates.set(data.roomId, data.state);
-        this.notifyRoomUpdated(data.roomId);
+        if ('currentlyPlaying' in data) {
+            this.currentlyPlaying.set(data.roomId, data.currentlyPlaying ?? null);
+        }
+        this.notifyRoomUpdated(
+            data.roomId,
+            undefined,
+            data.state,
+            'currentlyPlaying' in data ? data.currentlyPlaying : undefined,
+        );
     }
 
     @SubscribeMessage('leave')

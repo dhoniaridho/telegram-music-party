@@ -115,6 +115,7 @@ export class PlaybackApiController {
             devices: connectedDevices,
             connectedClients: clients,
             playbackState: clients > 0 ? this.gateway.getPlaybackState(roomId) : null,
+            currentlyPlaying: clients > 0 ? this.gateway.getCurrentlyPlaying(roomId) : null,
             votes,
             queue,
             queueLimit: room.Feature?.maxQueueSize ?? 25,

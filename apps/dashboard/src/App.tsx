@@ -16,6 +16,12 @@ type Track = {
   duration?: number;
   artwork?: string | null;
 };
+type NowPlaying = {
+  videoId: string | null;
+  title: string;
+  artist: string;
+  artwork: string | null;
+};
 type Room = {
   id: string;
   name: string;
@@ -23,6 +29,7 @@ type Room = {
   createdAt: string;
   connectedClients: number;
   playbackState?: "playing" | "paused" | "standby" | null;
+  currentlyPlaying?: NowPlaying | null;
   devices: Device[];
   votes: number;
   queue: Track[];
@@ -78,6 +85,11 @@ const icons: Record<string, IconType> = {
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const Component = icons[name] ?? IoMusicalNotesOutline;
   return <Component size={size} aria-hidden="true" focusable="false" />;
+}
+
+function notify(message: string) {
+  const showToast = /could not|failed|error|unavailable|not found/i.test(message) ? Toast.toast.danger : Toast.toast.success;
+  showToast(message, { timeout: 2600 });
 }
 
 export default function App() {
@@ -138,7 +150,24 @@ export default function App() {
 
     const socket = io();
     const watchRoom = () => socket.emit("watchRoom", { roomId });
-    const refreshRoom = () => { void loadRoom(); };
+    const refreshRoom = (update?: {
+      joinedDevice?: string;
+      playbackState?: Room["playbackState"];
+      currentlyPlaying?: Room["currentlyPlaying"];
+    }) => {
+      if (update?.joinedDevice) notify(`${update.joinedDevice} joined`);
+      const hasPlaybackState = Boolean(update && Object.prototype.hasOwnProperty.call(update, "playbackState"));
+      const hasCurrentTrack = Boolean(update && Object.prototype.hasOwnProperty.call(update, "currentlyPlaying"));
+      if (update && (hasPlaybackState || hasCurrentTrack)) {
+        setRoom((current) => current ? {
+          ...current,
+          ...(hasPlaybackState ? { playbackState: update.playbackState } : {}),
+          ...(hasCurrentTrack ? { currentlyPlaying: update.currentlyPlaying } : {}),
+        } : current);
+        if (!update.joinedDevice) return;
+      }
+      void loadRoom();
+    };
 
     socket.on("connect", watchRoom);
     socket.on("roomUpdated", refreshRoom);
@@ -151,8 +180,13 @@ export default function App() {
   }, [roomId, joinedRoomId, handle, loadRoom]);
 
   const firstTrack = room?.queue[0];
+  const currentlyPlaying = room?.currentlyPlaying;
   const isPlaying = room?.playbackState === "playing";
   const artwork = firstTrack?.artwork ?? (firstTrack?.url ? `https://img.youtube.com/vi/${firstTrack.url}/hqdefault.jpg` : "");
+  const playerArtwork = currentlyPlaying?.artwork ?? (currentlyPlaying?.videoId ? `https://img.youtube.com/vi/${currentlyPlaying.videoId}/hqdefault.jpg` : artwork);
+  const overviewArtwork = currentlyPlaying?.artwork ?? (currentlyPlaying?.videoId ? `https://img.youtube.com/vi/${currentlyPlaying.videoId}/hqdefault.jpg` : "");
+  const nowPlayingLabel = room?.playbackState === "playing" ? "Now playing" : room?.playbackState === "paused" ? "Paused" : "Selected in YouTube Music";
+  const playbackLabel = room?.playbackState === "playing" ? "Playing on YouTube Music" : room?.playbackState === "paused" ? "Paused on YouTube Music" : room?.connectedClients ? "Ready on YouTube Music" : "YouTube Music disconnected";
   const queueTracks = useMemo(() => room?.queue ?? [], [room]);
 
   const voterId = () => {
@@ -208,11 +242,6 @@ export default function App() {
       setJoinedRoomId(""); setRoomId(""); setRoom(null); setHasVoted(false); setUnregisterOpen(false); notify("Room unregistered");
     } catch (err) { notify(err instanceof Error ? err.message : "Could not unregister room"); }
     finally { setUnregistering(false); }
-  };
-
-  const notify = (message: string) => {
-    const showToast = /could not|failed|error|unavailable|not found/i.test(message) ? Toast.toast.danger : Toast.toast.success;
-    showToast(message, { timeout: 2600 });
   };
 
   const control = async (action: string) => {
@@ -355,14 +384,13 @@ export default function App() {
                       <Card className="grid min-h-[19rem] grid-cols-[minmax(12rem,0.78fr)_minmax(0,1.22fr)] items-stretch gap-6 overflow-hidden rounded-3xl border border-blue-400/30 bg-gradient-to-br from-blue-950/80 via-indigo-950/60 to-cyan-950/40 p-5 shadow-lg shadow-blue-950/20 max-sm:grid-cols-1">
                         <div className="group/cover relative min-h-56 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">
                           <div className="absolute inset-0 grid place-items-center text-white"><Icon name="music" size={32} /></div>
-                          {artwork && <img src={artwork} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover/cover:scale-105" />}
+                          {overviewArtwork && <img src={overviewArtwork} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover/cover:scale-105" />}
                           <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-blue-950/45 via-transparent to-cyan-300/20" />
                         </div>
                         <div className="flex min-w-0 flex-col justify-center py-2">
-                          <p className="mb-3 text-sm font-medium text-blue-300">{firstTrack ? "Up next" : "Queue empty"}</p>
-                          <h2 className="text-3xl font-semibold tracking-tight">{firstTrack?.title.split(" - ")[0] ?? "Nothing queued"}</h2>
-                          <p className="mt-2 text-sm text-cyan-100/80">{firstTrack?.title.includes(" - ") ? firstTrack.title.split(" - ").slice(1).join(" - ") : firstTrack ? "Queued for your room" : "Search music and add a track."}</p>
-                          {firstTrack && <p className="mt-5 text-sm text-foreground/60">Added by <span className="text-foreground">{firstTrack.addedBy ?? "Web player"}</span></p>}
+                          <p className="mb-3 text-sm font-medium text-blue-300">{currentlyPlaying ? nowPlayingLabel : room.playbackState === "playing" ? "Now playing" : room.playbackState === "paused" ? "Paused" : "Nothing playing"}</p>
+                          <h2 className="text-3xl font-semibold tracking-tight">{currentlyPlaying?.title ?? (room.playbackState === "playing" ? "Loading current track…" : "Nothing playing")}</h2>
+                          <p className="mt-2 text-sm text-cyan-100/80">{currentlyPlaying?.artist ?? (room.connectedClients ? "Waiting for YouTube Music track details." : "Connect YouTube Music to show the current track.")}</p>
                         </div>
                       </Card>
 
@@ -413,7 +441,7 @@ export default function App() {
         )}
       </main>
       {isJoined && room && <div className="player-bar fixed inset-x-0 bottom-0 z-20 grid h-20 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 border-t border-blue-400/30 bg-background/95 px-6 supports-[backdrop-filter]:backdrop-blur-xl max-sm:h-[4.5rem] max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:px-2" role="region" aria-label="Room player controls">
-        <div className="player-track flex min-w-0 items-center gap-3"><div className="player-cover size-11 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">{artwork && <img src={artwork} alt="" className="size-full object-cover" />}</div><div className="player-track-copy grid min-w-0 gap-1 text-sm"><b>{firstTrack?.title ?? "Nothing queued"}</b><span className="text-blue-300">{firstTrack ? "Up next" : room.name}</span></div></div>
+        <div className="player-track flex min-w-0 items-center gap-3"><div className="player-cover size-11 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">{playerArtwork && <img src={playerArtwork} alt="" className="size-full object-cover" />}</div><div className="player-track-copy grid min-w-0 gap-1 text-sm"><b>{currentlyPlaying?.title ?? firstTrack?.title ?? "Nothing queued"}</b><span className="text-blue-300" aria-live="polite">{currentlyPlaying ? `${currentlyPlaying.artist} · ${playbackLabel}` : `${firstTrack ? "Up next · " : ""}${playbackLabel}`}</span></div></div>
         <div className="player-controls flex items-center gap-1">
           <Button isIconOnly aria-label="Previous track" variant="ghost" isDisabled={!room.feature?.previousCommand || !room.connectedClients} onPress={() => void control("previous")}><Icon name="previous" size={17} /></Button>
           <Button isIconOnly aria-label={isPlaying ? "Pause" : "Play"} className="player-play size-14 min-h-14 min-w-14 rounded-full bg-blue-600 text-white hover:bg-blue-500" isPending={busy === "play" || busy === "pause"} isDisabled={!room.connectedClients} onPress={() => void control(isPlaying ? "pause" : "play")}><Icon name={isPlaying ? "pause" : "play"} size={28} /></Button>

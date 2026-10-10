@@ -1121,26 +1121,36 @@ function getAppInstance<T>() {
 }
 
 function getQueueInstance() {
-    const q = document.querySelector("#queue");
-    (globalThis as any).queue = q;
-
-    setInterval(() => {
-        (globalThis as any).queue = document.querySelector(
-            "#queue"
-        ) as Element & {
-            dispatch: (action: any) => void;
-            queue: {
+    return document.querySelector("#queue") as (Element & {
+        dispatch: (action: any) => void;
+        queue: {
+            store: {
                 store: {
-                    store: {
-                        dispatch: (action: any) => void;
-                        getState: () => any;
-                    };
+                    dispatch: (action: any) => void;
+                    getState: () => any;
                 };
             };
         };
-    }, 300);
+    }) | null;
+}
 
-    return (globalThis as any).queue;
+async function waitForQueueRuntime(timeoutMs = 15000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const app = getAppInstance() as any;
+        const queue = getQueueInstance();
+        const store = queue?.queue?.store?.store as any;
+        const queueState = store?.getState?.().queue;
+        if (
+            typeof app?.networkManager?.fetch === "function" &&
+            typeof store?.getState === "function" &&
+            queueState?.queueContextParams
+        ) {
+            return { app, queue, store, queueState };
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+    throw new Error("YouTube Music queue did not become ready within 15 seconds.");
 }
 
 function collectVideoIds(value: any, ids = new Set<string>(), seen = new WeakSet<object>()) {
@@ -1164,7 +1174,9 @@ function collectVideoIds(value: any, ids = new Set<string>(), seen = new WeakSet
 }
 
 function getQueueVideoIds(queue: any, queueState: any) {
-    const ids = collectVideoIds(queueState);
+    const ids = collectVideoIds(queueState?.items ?? []);
+    const currentVideoId = getVideoId();
+    if (currentVideoId) ids.add(currentVideoId);
 
     queue?.querySelectorAll('a[href*="watch?v="]').forEach((anchor: HTMLAnchorElement) => {
         try {
@@ -1184,12 +1196,14 @@ async function addQueue(videoIds: string[]) {
     const uniqueVideoIds = [...new Set(videoIds.filter(Boolean))];
     if (!uniqueVideoIds.length) return;
 
-    const app = getAppInstance();
-    const queue = getQueueInstance();
-    const store = queue?.queue.store.store;
-    if (!app || !store) return;
-
-    const queueState = store.getState().queue;
+    let runtime: Awaited<ReturnType<typeof waitForQueueRuntime>>;
+    try {
+        runtime = await waitForQueueRuntime();
+    } catch (error) {
+        console.warn("Could not add room tracks to YouTube Music queue:", error);
+        return;
+    }
+    const { app, queue, store, queueState } = runtime;
     const existingVideoIds = getQueueVideoIds(queue, queueState);
     const videoIdsToAdd = uniqueVideoIds.filter((videoId) => {
         if (existingVideoIds.has(videoId) || queueItemsBeingAdded.has(videoId)) {
@@ -1219,12 +1233,12 @@ async function addQueue(videoIds: string[]) {
             const currentVideoIds = getQueueVideoIds(queue, currentQueueState);
             const addedVideoIds = new Set<string>();
             const items = result.queueDatas
-                .map((it) =>
+                .map((it: any) =>
                     typeof it === "object" && it && "content" in it
                         ? it.content
                         : null
                 )
-                .filter((item): item is NonNullable<typeof item> => Boolean(item))
+                .filter((item: any) => Boolean(item))
                 .filter((item: any) => {
                     const itemVideoIds = collectVideoIds(item);
                     const videoId = videoIdsToAdd.find((requestedId) => itemVideoIds.has(requestedId));
@@ -1248,6 +1262,8 @@ async function addQueue(videoIds: string[]) {
             });
             removeListParameter();
         }
+    } catch (error) {
+        console.warn("YouTube Music rejected room queue items:", error);
     } finally {
         videoIdsToAdd.forEach((videoId) => queueItemsBeingAdded.delete(videoId));
     }

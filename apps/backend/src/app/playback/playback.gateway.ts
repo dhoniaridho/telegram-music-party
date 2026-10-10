@@ -283,17 +283,14 @@ export class PlaybackGateway implements OnGatewayDisconnect {
             return;
         }
 
-        // remove from queue
-        const queue = await this.playbackService.getQueue(data.roomId);
-
-        if (queue && queue.url === data.videoId) {
-            if (queue.url === data.videoId) {
-                // delete song
-                await this.playbackService.removeQueue(
-                    data.roomId,
-                    data.videoId,
-                );
-            }
+        // Remove the played track and any queued tracks that YouTube skipped
+        // before it. Leave the room queue untouched for unrelated playback.
+        if (data.videoId) {
+            const removed = await this.playbackService.removeQueuesThrough(
+                data.roomId,
+                data.videoId,
+            );
+            if (removed) console.log(`Removed ${removed} played/skipped queue item(s).`);
         }
 
         // clear votes

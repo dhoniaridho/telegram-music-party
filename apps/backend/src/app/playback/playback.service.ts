@@ -45,6 +45,23 @@ export class PlaybackService {
         });
     }
 
+    async removeQueuesThrough(roomId: string, videoId: string) {
+        const queues = await this.getQueues(roomId);
+        const playedIndex = queues.findIndex((item) => item.url === videoId);
+        if (playedIndex < 0) return 0;
+
+        const skippedAndPlayedIds = queues
+            .slice(0, playedIndex + 1)
+            .map((item) => item.id);
+        const result = await this.prisma.queue.deleteMany({
+            where: {
+                roomId,
+                id: { in: skippedAndPlayedIds },
+            },
+        });
+        return result.count;
+    }
+
     async removeLastPlayed(roomId: string) {
         const data = await this.prisma.queue.findFirst({
             where: {

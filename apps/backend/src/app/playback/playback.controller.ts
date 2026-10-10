@@ -950,6 +950,7 @@ export class PlaybackTelegramController {
             `Mute command: ${feature.muteCommand ? 'On' : 'Off'}`,
             `Unmute command: ${feature.unmuteCommand ? 'On' : 'Off'}`,
             `Volume command: ${feature.volumeCommand ? 'On' : 'Off'}`,
+            `Silent Telegram notifications: ${feature.silentNotifications ? 'On' : 'Off'}`,
             '',
             'Button guide:',
             'Votes − / +: Set how many /vote_next votes are needed to skip.',
@@ -960,6 +961,7 @@ export class PlaybackTelegramController {
             'Previous admin-only: Limit /prev to group admins.',
             '/mute and /unmute: Allow those playback commands.',
             'Volume controls: Allow /volume_up and /volume_down.',
+            'Silent Telegram notifications: Send bot announcements without push alerts.',
             '',
             'Custom values still work with /set <setting> <value>.',
         ].join('\n');
@@ -1002,6 +1004,7 @@ export class PlaybackTelegramController {
             [toggle('/mute', 'muteCommand', feature.muteCommand)],
             [toggle('/unmute', 'unmuteCommand', feature.unmuteCommand)],
             [toggle('Volume controls', 'volumeCommand', feature.volumeCommand)],
+            [toggle('Silent notifications', 'silentNotifications', feature.silentNotifications)],
         ]);
     }
 
@@ -1103,6 +1106,7 @@ export class PlaybackTelegramController {
                 'muteCommand',
                 'unmuteCommand',
                 'volumeCommand',
+                'silentNotifications',
             ] as const;
 
             if (
@@ -1199,6 +1203,7 @@ export class PlaybackTelegramController {
             muteCommand: 'Mute Command',
             unmuteCommand: 'Unmute Command',
             volumeCommand: 'Volume Command',
+            silentNotifications: 'Silent Telegram Notifications',
             maxQueueSize: 'Max Queue Size',
         };
 
@@ -1248,7 +1253,8 @@ export class PlaybackTelegramController {
             case 'previousOnlyAdmin':
             case 'muteCommand':
             case 'unmuteCommand':
-            case 'volumeCommand': {
+            case 'volumeCommand':
+            case 'silentNotifications': {
                 featureName = availableCommands[command];
                 featureValue = value === 'true' ? true : false;
                 break;

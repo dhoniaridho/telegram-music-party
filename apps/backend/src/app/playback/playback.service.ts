@@ -292,8 +292,10 @@ export class PlaybackService {
     }
 
     async sendMessage(chatId: string, message: string) {
+        const room = await this.getRoomByChatId(chatId);
         await this.bot.telegram.sendMessage(chatId, message, {
             parse_mode: 'Markdown',
+            disable_notification: room?.Feature?.silentNotifications ?? false,
         });
     }
 
@@ -302,8 +304,10 @@ export class PlaybackService {
         topicId: number | null,
         message: string,
     ) {
+        const room = await this.getRoomByChatId(chatId);
         await this.bot.telegram.sendMessage(chatId, message, {
             parse_mode: 'Markdown',
+            disable_notification: room?.Feature?.silentNotifications ?? false,
             ...(topicId != null ? { message_thread_id: topicId } : {}),
         });
     }
@@ -343,6 +347,7 @@ export class PlaybackService {
         if (audioControls.length) rows.push(audioControls);
         const options = {
             parse_mode: 'Markdown' as const,
+            disable_notification: feature?.silentNotifications ?? false,
             ...(topicId != null ? { message_thread_id: topicId } : {}),
             ...Markup.inlineKeyboard(rows),
         };

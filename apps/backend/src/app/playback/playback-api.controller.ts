@@ -145,6 +145,7 @@ export class PlaybackApiController {
         const booleanSettings = [
             'nextCommand', 'nextOnlyAdmin', 'previousCommand',
             'previousOnlyAdmin', 'muteCommand', 'unmuteCommand', 'volumeCommand',
+            'silentNotifications',
         ] as const;
         const numericSettings = ['minimumVotes', 'maxQueueSize'] as const;
         const updates = Object.entries(body);

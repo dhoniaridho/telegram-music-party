@@ -1,6 +1,12 @@
 module.exports = {
   packagerConfig: {
     asar: true,
+    prune: false,
+    derefSymlinks: true,
+    ignore: [
+      /^\/node_modules\/\@electron-forge(?:\/|$)/,
+      /^\/node_modules\/electron(?:\/|$)/,
+    ],
     extraResource: ["generated/assets", "generated/server"],
     name: "Music Party",
     appBundleId: "com.dhoniaridho.musicparty",

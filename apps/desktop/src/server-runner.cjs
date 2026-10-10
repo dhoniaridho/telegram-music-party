@@ -6,6 +6,7 @@ async function start() {
   const schema = path.join(root, "prisma/sqlite/schema.prisma");
   process.env.DESKTOP_LOCAL_SERVER = "1";
   process.env.DATABASE_PROVIDER = "sqlite";
+  process.env.RUST_LOG = "info";
   process.env.SQLITE_DATABASE_URL ||= `file:${path.join(process.env.MUSIC_PARTY_DATA_DIR, "music-party.db")}`;
   process.env.PORT ||= "3417";
 

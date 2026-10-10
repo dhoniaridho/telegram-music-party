@@ -70,7 +70,7 @@ importers:
         specifier: ^4.3.4
         version: 4.3.4(keyv@5.3.3)
       '@marianmeres/random-human-readable':
-        specifier: ^1.6.1
+        specifier: 1.6.1
         version: 1.6.1
       '@nestjs/cache-manager':
         specifier: ^3.0.1
@@ -275,9 +275,48 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@ghostery/adblocker':
+        specifier: ^2.20.1
+        version: 2.20.1
+      '@ghostery/adblocker-content':
+        specifier: ^2.20.1
+        version: 2.20.1
       '@ghostery/adblocker-electron':
         specifier: ^2.20.1
         version: 2.20.1(electron@44.7.0)
+      '@ghostery/adblocker-electron-preload':
+        specifier: ^2.20.1
+        version: 2.20.1(electron@44.7.0)
+      '@ghostery/adblocker-extended-selectors':
+        specifier: ^2.20.1
+        version: 2.20.1
+      '@ghostery/url-parser':
+        specifier: ^1.3.1
+        version: 1.3.1
+      '@remusao/guess-url-type':
+        specifier: ^2.1.0
+        version: 2.1.0
+      '@remusao/small':
+        specifier: ^2.1.0
+        version: 2.1.0
+      '@remusao/smaz':
+        specifier: ^2.2.0
+        version: 2.2.0
+      '@remusao/smaz-compress':
+        specifier: ^2.2.0
+        version: 2.2.0
+      '@remusao/smaz-decompress':
+        specifier: ^2.2.0
+        version: 2.2.0
+      '@remusao/trie':
+        specifier: ^2.1.0
+        version: 2.1.0
+      tldts-core:
+        specifier: ^7.4.18
+        version: 7.4.18
+      tldts-experimental:
+        specifier: ^7.4.18
+        version: 7.4.18
     devDependencies:
       '@electron-forge/cli':
         specifier: ^8.0.1

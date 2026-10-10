@@ -16,6 +16,24 @@ const serverDir = path.join(generatedDir, "server");
 const cloudflaredPath = path.join(assetsDir, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
 const localPartyUrl = "http://127.0.0.1:3417";
 
+async function linkRuntimeDependencies() {
+  const packageJson = JSON.parse(await fs.readFile(path.join(appRoot, "package.json"), "utf8"));
+  const appNodeModules = path.join(appRoot, "node_modules");
+  await fs.mkdir(appNodeModules, { recursive: true });
+
+  for (const name of Object.keys(packageJson.dependencies || {})) {
+    const segments = name.split("/");
+    const source = path.join(repoRoot, "node_modules", ...segments);
+    const target = path.join(appNodeModules, ...segments);
+    if (!await fs.access(source).then(() => true, () => false)) {
+      throw new Error(`Runtime dependency ${name} is missing from the workspace install.`);
+    }
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.rm(target, { recursive: true, force: true });
+    await fs.symlink(source, target, process.platform === "win32" ? "junction" : "dir");
+  }
+}
+
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
     cwd,
@@ -29,6 +47,9 @@ function run(command, args, cwd) {
 async function copyServer() {
   await fs.rm(serverDir, { recursive: true, force: true });
   run("pnpm", ["--filter", "backend", "deploy", "--prod", "--legacy", serverDir], repoRoot);
+  const prismaClientEntry = await fs.realpath(require.resolve("@prisma/client", { paths: [backendRoot] }));
+  const generatedPrismaClient = path.resolve(path.dirname(prismaClientEntry), "../../.prisma/client");
+  await fs.cp(generatedPrismaClient, path.join(serverDir, "node_modules/.prisma/client"), { recursive: true, force: true });
   await fs.cp(path.join(backendRoot, "dist"), path.join(serverDir, "dist"), { recursive: true, force: true });
   await fs.cp(path.join(backendRoot, "prisma/sqlite"), path.join(serverDir, "prisma/sqlite"), { recursive: true, force: true });
   await fs.cp(path.join(backendRoot, "prisma/generated/sqlite-client"), path.join(serverDir, "prisma/generated/sqlite-client"), { recursive: true, force: true });
@@ -98,7 +119,19 @@ async function prepareCloudflared() {
   console.log(`Prepared ${version.stdout.trim()} for ${target}.`);
 }
 
+async function prepareNativeMakers() {
+  if (process.platform === "darwin") {
+    const nodeGyp = path.join(repoRoot, "node_modules/.bin/node-gyp");
+    for (const packageName of ["macos-alias", "fs-xattr"]) {
+      run(nodeGyp, ["rebuild", "--directory", path.join(repoRoot, "node_modules", packageName)], repoRoot);
+    }
+  } else if (process.platform === "win32") {
+    run(process.execPath, [path.join(repoRoot, "node_modules/electron-winstaller/script/select-7z-arch.js")], repoRoot);
+  }
+}
+
 async function prepareAssets() {
+  await linkRuntimeDependencies();
   await fs.rm(assetsDir, { recursive: true, force: true });
   await fs.mkdir(extensionDir, { recursive: true });
   await fs.cp(extensionDist, extensionDir, { recursive: true });
@@ -124,7 +157,10 @@ async function prepareAssets() {
     await fs.writeFile(cachedFilters, filters);
     await fs.writeFile(path.join(assetsDir, "adblock-filters.bin"), filters);
   }
-  if (process.argv.includes("--with-server")) await copyServer();
+  if (process.argv.includes("--with-server")) {
+    await prepareNativeMakers();
+    await copyServer();
+  }
   console.log(process.argv.includes("--with-server")
     ? "Prepared the local API, party integration, Cloudflare Tunnel, and ad filters."
     : "Prepared the party integration, Cloudflare Tunnel, and ad filters.");

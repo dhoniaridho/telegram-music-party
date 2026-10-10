@@ -23,7 +23,7 @@ pnpm desktop:dev
 pnpm desktop:package
 ```
 
-Forge creates installers in `apps/desktop/out/make`. macOS creates a DMG and ZIP, Windows creates a Squirrel installer and ZIP, and Linux creates a DEB and ZIP. Builds are native to the machine that runs them; use the release workflow to produce all three platforms.
+Forge creates installers in `apps/desktop/out/make`. macOS creates a DMG and ZIP, Windows creates a Squirrel installer and ZIP, and Linux creates a DEB and ZIP. Builds run on native platform runners. From GitHub Actions, run **Build and publish backend image** manually to create downloadable artifacts for all three systems, or push a version tag to attach them to the GitHub release.
 
 The package step builds the browser extension and bundles a precompiled Ghostery ads filter. At runtime the blocker is enabled before either remote page is opened. Filter lists are fixed at package build time, so rebuild the app to include later filter updates. Ads delivered through first-party video streams may still appear.
 

@@ -5,100 +5,20 @@
   color: #f1f1f1;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --surface: #212121;
-  --muted: #aaa;
-  --accent: #ff0033;
 }
 
 * { box-sizing: border-box; }
 
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 
-.toolbar {
-  height: 58px;
-  display: flex;
-  align-items: stretch;
-  gap: 26px;
-  padding: 0 18px;
-  background: var(--surface);
-  border-bottom: 1px solid #3a3a3a;
-  user-select: none;
-}
+.startup-screen { display: grid; width: 100%; height: 100%; place-items: center; background: #030303; }
+.startup-card { display: grid; justify-items: center; gap: 12px; max-width: 360px; padding: 28px; text-align: center; }
+.startup-mark { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 10px; color: #fff; background: #c9002b; font-size: 13px; font-weight: 700; }
+.startup-card h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.startup-status { margin: 0; color: #aaa; font-size: 13px; line-height: 1.5; }
+.startup-screen.is-hidden { display: none; }
 
-.brand {
-  align-self: center;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  background: #111;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.tabs { display: flex; align-items: stretch; gap: 22px; }
-
-.tab {
-  position: relative;
-  border: 0;
-  padding: 2px 1px 0;
-  color: #c7c7c7;
-  background: transparent;
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.tab:hover { color: #fff; }
-.tab.is-active { color: #fff; }
-.tab.is-active::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: var(--accent);
-  content: "";
-}
-
-.toolbar-end { display: flex; align-items: center; gap: 16px; margin-left: auto; }
-
-.blocking-status { display: inline-flex; align-items: center; gap: 8px; color: #c5c5c5; font-size: 12px; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #71c995; }
-
-.server-settings {
-  border: 0;
-  padding: 7px 10px;
-  border-radius: 4px;
-  color: #ddd;
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.server-settings:hover { color: #fff; background: #383838; }
-
-.reload {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  color: #ddd;
-  background: transparent;
-  cursor: pointer;
-}
-
-.reload:hover { background: #383838; color: #fff; }
-.reload svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-.settings-dialog {
+.settings-dialog, .telegram-dialog {
   width: min(460px, calc(100vw - 32px));
   padding: 0;
   border: 1px solid #444;
@@ -107,22 +27,24 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   background: #212121;
   box-shadow: 0 18px 55px #0009;
 }
-.settings-dialog::backdrop { background: #0009; }
-.settings-form { padding: 22px; }
+.settings-dialog::backdrop, .telegram-dialog::backdrop { background: #0009; }
+.settings-form, .telegram-form { padding: 22px; }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; }
 .dialog-heading h1 { margin: 0; font-size: 20px; font-weight: 600; }
 .dialog-close { width: 30px; height: 30px; border: 0; border-radius: 50%; color: #ddd; background: transparent; font-size: 23px; line-height: 1; cursor: pointer; }
 .dialog-close:hover { background: #383838; }
 .settings-copy { margin: 12px 0 22px; color: #bbb; font-size: 13px; line-height: 1.5; }
-.settings-form label { display: block; margin-bottom: 8px; color: #ddd; font-size: 13px; }
-.settings-form input { width: 100%; height: 42px; border: 1px solid #555; border-radius: 4px; padding: 0 11px; color: #fff; background: #111; font: inherit; font-size: 14px; }
-.settings-form input:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.public-server-choice { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; color: #c7c7c7; font-size: 12px; }
-.public-server-choice code { color: #fff; font-family: inherit; }
-.public-server-button { min-height: 34px; border: 1px solid #777; border-radius: 4px; padding: 0 10px; color: #fff; background: #303030; font: inherit; cursor: pointer; }
-.public-server-button:hover { background: #383838; }
-.public-server-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.token-label { margin-top: 20px; }
+.settings-form label, .telegram-form label { display: block; margin-bottom: 8px; color: #ddd; font-size: 13px; }
+.settings-form input, .telegram-form input { width: 100%; height: 42px; border: 1px solid #555; border-radius: 4px; padding: 0 11px; color: #fff; background: #111; font: inherit; font-size: 14px; }
+.settings-form input:focus-visible, .telegram-form input:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.tunnel-choice { display: grid; gap: 10px; margin-top: 10px; color: #c7c7c7; font-size: 12px; }
+.tunnel-toggle { display: flex !important; align-items: center; gap: 10px; margin: 2px 0 0 !important; cursor: pointer; }
+.settings-form .tunnel-toggle input { width: 16px; height: 16px; margin: 0; accent-color: #c9002b; }
+.settings-form .tunnel-toggle input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.tunnel-help { margin: -4px 0 0 26px; color: #aaa; line-height: 1.45; }
+.hosted-button { justify-self: start; min-height: 34px; border: 0; padding: 0; color: #aaa; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
+.hosted-button:hover { color: #fff; }
+.hosted-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .token-input-row { display: flex; gap: 8px; }
 .token-input-row input { min-width: 0; }
 .token-visibility { min-width: 56px; border: 1px solid #555; border-radius: 4px; color: #ddd; background: #303030; font: inherit; font-size: 12px; cursor: pointer; }
@@ -130,16 +52,9 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .field-help { margin: 8px 0 0; color: #aaa; font-size: 12px; line-height: 1.5; }
 .field-help code { color: #ddd; font-family: inherit; }
 .settings-error { margin: 9px 0 0; color: #ff8a8a; font-size: 12px; }
+.settings-progress { margin: 9px 0 0; color: #b5d8ff; font-size: 12px; line-height: 1.45; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 23px; }
 .dialog-actions button { min-height: 36px; border: 0; border-radius: 4px; padding: 0 13px; font: inherit; font-size: 13px; cursor: pointer; }
 .cancel-button { color: #eee; background: #383838; }
 .save-button { color: #fff; background: #c9002b; }
 .dialog-actions button:hover { filter: brightness(1.15); }
-
-@media (max-width: 620px) {
-  .toolbar { gap: 15px; padding: 0 12px; }
-  .tabs { gap: 14px; }
-  .tab { font-size: 12px; }
-  .blocking-status { gap: 0; font-size: 0; }
-  .status-dot { width: 8px; height: 8px; }
-}

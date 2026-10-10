@@ -7,3 +7,145 @@
     --field-radius: calc(var(--radius) * 3);
   }
 }
+
+.mobile-room-header,
+.mobile-search,
+.mobile-nav { display: none; }
+
+@media (max-width: 767px) {
+  html,
+  body,
+  #root { min-height: 100%; }
+
+  .app-shell { min-height: 100dvh; }
+  .sidebar { display: none !important; }
+  .main-content {
+    width: 100%;
+    min-height: 100dvh;
+    margin-left: 0 !important;
+    padding: 0 14px calc(152px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    height: auto !important;
+    min-height: 64px;
+    gap: 10px;
+    margin: 0 -14px;
+    padding: max(8px, env(safe-area-inset-top)) 14px 10px;
+    border-bottom-color: rgb(255 255 255 / 12%);
+    background: rgb(12 13 12 / 96%);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-room-header {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .mobile-room-header > div { display: grid; min-width: 0; gap: 1px; }
+  .mobile-room-kicker { color: #aaa; font-size: 10px; line-height: 1.2; }
+  .mobile-room-name { overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-room-id { overflow: hidden; color: #aaa; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-room-actions { width: 44px !important; min-width: 44px !important; height: 44px !important; min-height: 44px !important; }
+  .desktop-search { display: none !important; }
+  .mobile-search { display: none !important; }
+  .mobile-search.is-visible { display: flex !important; }
+
+  .dashboard-tab-panel { padding-top: 14px !important; }
+  .dashboard-overview { gap: 18px !important; }
+  .dashboard-overview > div { gap: 18px !important; }
+  .current-track-card {
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+    min-height: 0 !important;
+    gap: 14px !important;
+    padding: 14px !important;
+    border-radius: 18px !important;
+    box-shadow: none !important;
+  }
+  .current-track-cover {
+    width: 88px;
+    min-height: 88px !important;
+    height: 88px;
+    border-radius: 12px !important;
+  }
+  .current-track-card h2 { font-size: 18px !important; line-height: 1.2; }
+  .current-track-card p { margin-top: 4px !important; font-size: 12px; }
+  .current-track-card p:first-child { margin-bottom: 5px !important; }
+
+  .panel { padding: 16px !important; border-radius: 18px !important; }
+  .queue-row { min-height: 60px !important; gap: 8px !important; }
+  .queue-index { width: 18px !important; }
+  .queue-cover { width: 40px !important; height: 40px !important; border-radius: 9px !important; }
+  .queue-added { display: none !important; }
+  .remove-button { width: 42px !important; min-width: 42px !important; height: 42px !important; min-height: 42px !important; }
+  .result-row { min-height: 60px !important; }
+  .result-row > img { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 9px; object-fit: cover; }
+  .result-row > button { min-height: 42px; }
+  .setting-row { align-items: stretch !important; }
+  .setting-row .stepper { align-self: flex-end; }
+  .room-info-grid { padding: 14px !important; border-radius: 14px !important; }
+  .room-modal {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem) !important;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom)) !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  input { font-size: 16px !important; }
+
+  .player-bar {
+    bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+    height: 68px !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 6px !important;
+    padding: 0 10px !important;
+    border-top-color: rgb(255 255 255 / 16%) !important;
+    background: rgb(22 23 22 / 97%) !important;
+  }
+  .player-cover { width: 42px !important; height: 42px !important; border-radius: 8px !important; }
+  .player-track { gap: 9px !important; }
+  .player-track-copy { gap: 2px !important; font-size: 12px !important; }
+  .player-track-copy b,
+  .player-track-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .player-track-copy span { font-size: 10px; }
+  .player-controls { gap: 0 !important; }
+  .player-play { width: 46px !important; min-width: 46px !important; height: 46px !important; min-height: 46px !important; }
+  .mobile-nav {
+    position: fixed;
+    z-index: 30;
+    inset: auto 0 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 4px 5px env(safe-area-inset-bottom);
+    border-top: 1px solid rgb(255 255 255 / 14%);
+    background: #101110;
+  }
+  .mobile-nav-item {
+    display: flex !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px !important;
+    padding: 2px 0 !important;
+    color: #aaa !important;
+    font-size: 10px !important;
+    line-height: 1.1;
+  }
+  .mobile-nav-item.is-active { color: #8bbcff !important; background: transparent !important; }
+  .mobile-nav-item:focus-visible,
+  .mobile-room-actions:focus-visible,
+  .player-bar button:focus-visible { outline: 2px solid #8bbcff; outline-offset: 2px; }
+
+  .empty-workspace { min-height: calc(100dvh - env(safe-area-inset-top)) !important; padding: 24px 2px 40px; }
+  .join-gate-form { padding: 0 2px; }
+  .error-banner { margin-top: 12px !important; }
+}

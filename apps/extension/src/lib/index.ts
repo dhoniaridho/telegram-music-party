@@ -304,14 +304,16 @@ function getConfig() {
     return config;
 }
 
+const roomPanelRefreshers = new Set<() => void>();
+
 function createButton({
     onClick,
     children,
-    join = true,
+    icon,
 }: {
     onClick: any;
     children: string;
-    join?: boolean;
+    icon: "create" | "join" | "leave" | "info" | "settings" | "server" | "queue" | "members";
 }) {
     // const wrapBtn = document.createElement("ytmusic-guide-entry-renderer");
     const btn = document.createElement("tp-yt-paper-item");
@@ -329,18 +331,32 @@ function createButton({
     svg.style.width = "20px";
     svg.style.height = "20px";
 
+    const iconPaths = {
+        create: "M12 8v8m-4-4h8m5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+        join: "M12 4.5v15m7.5-7.5h-15",
+        leave: "M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75",
+        info: "M11.25 11.25h1.5v5.25m-.75-8.25h.008v.008H12V8.25Zm9 3.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+        settings: "M4 6h16M4 12h16M4 18h16",
+        server: "M4.5 6.75h15m-15 5.25h15m-15 5.25h15M7.5 6.75h.008v.008H7.5V6.75Zm0 5.25h.008v.008H7.5V12Zm0 5.25h.008v.008H7.5V17.25Z",
+        queue: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+        members: "M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m16 0v-2a4 4 0 0 0-3-3.87M14 3.13a4 4 0 0 1 0 7.75M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
+    } as const;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("stroke-linecap", "round");
     path.setAttribute("stroke-linejoin", "round");
-    path.setAttribute(
-        "d",
-        join ?
-        "M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.871c1.355 0 2.697.056 4.024.166C17.155 8.51 18 9.473 18 10.608v2.513M15 8.25v-1.5m-6 1.5v-1.5m12 9.75-1.5.75a3.354 3.354 0 0 1-3 0 3.354 3.354 0 0 0-3 0 3.354 3.354 0 0 1-3 0 3.354 3.354 0 0 0-3 0 3.354 3.354 0 0 1-3 0L3 16.5m15-3.379a48.474 48.474 0 0 0-6-.371c-2.032 0-4.034.126-6 .371m12 0c.39.049.777.102 1.163.16 1.07.16 1.837 1.094 1.837 2.175v5.169c0 .621-.504 1.125-1.125 1.125H4.125A1.125 1.125 0 0 1 3 20.625v-5.17c0-1.08.768-2.014 1.837-2.174A47.78 47.78 0 0 1 6 13.12M12.265 3.11a.375.375 0 1 1-.53 0L12 2.845l.265.265Zm-3 0a.375.375 0 1 1-.53 0L9 2.845l.265.265Zm6 0a.375.375 0 1 1-.53 0L15 2.845l.265.265Z"
-        :
-        "M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"
-    );
+    path.setAttribute("d", iconPaths[icon]);
 
     svg.appendChild(path);
+    if (icon === "settings") {
+        for (const [cx, cy] of [[9, 6], [15, 12], [11, 18]]) {
+            const knob = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            knob.setAttribute("cx", String(cx));
+            knob.setAttribute("cy", String(cy));
+            knob.setAttribute("r", "1.5");
+            knob.setAttribute("fill", "currentColor");
+            svg.appendChild(knob);
+        }
+    }
 
     const txt = document.createElement("span");
     txt.style.margin = "0 20px";
@@ -371,7 +387,7 @@ type RoomDialogOptions = {
     onSubmit?: (values: Record<string, string>) => void;
 };
 
-function showRoomDialog(options: RoomDialogOptions) {
+function showRoomDialog(options: RoomDialogOptions): HTMLDialogElement {
     if (!document.getElementById("ytmp-room-dialog-style")) {
         const style = document.createElement("style");
         style.id = "ytmp-room-dialog-style";
@@ -453,6 +469,13 @@ function showRoomDialog(options: RoomDialogOptions) {
                 color: #f1f1f1;
                 overflow-wrap: anywhere;
             }
+            .ytmp-room-live-panel { display: grid; gap: 12px; }
+            .ytmp-room-live-panel__status { margin: 0; color: #c6c6c6; font-size: 13px; }
+            .ytmp-room-live-panel__list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+            .ytmp-room-live-panel__item { display: grid; gap: 4px; min-width: 0; padding: 12px 0; border-top: 1px solid #454545; }
+            .ytmp-room-live-panel__title { overflow: hidden; color: #f1f1f1; font-weight: 500; text-overflow: ellipsis; }
+            .ytmp-room-live-panel__detail { color: #aaa; font-size: 12px; }
+            .ytmp-room-live-panel__empty { margin: 0; padding: 16px 0; border-top: 1px solid #454545; color: #aaa; }
             .ytmp-room-dialog__field label { color: #f1f1f1; }
             .ytmp-room-dialog__field input {
                 box-sizing: border-box;
@@ -592,6 +615,7 @@ function showRoomDialog(options: RoomDialogOptions) {
     document.body.append(dialog);
     dialog.showModal();
     (inputs.values().next().value as HTMLInputElement | undefined)?.focus();
+    return dialog;
 }
 
 type RoomSettings = {
@@ -704,30 +728,7 @@ function createRoomSettingsContent(config: ReturnType<typeof getConfig>, room: R
         content.append(row);
     };
 
-    const shareButton = document.createElement("button");
-    shareButton.className = "ytmp-room-settings__share";
-    shareButton.type = "button";
-    shareButton.textContent = "Copy invite link";
-    shareButton.addEventListener("click", async () => {
-        const baseUrl = config.partyUrl || DEFAULT_PARTY_URL;
-        try {
-            const url = new URL(baseUrl);
-            if (["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
-                throw new Error("This room is on the private local server. Switch to the public server and create a shared room there before sharing.");
-            }
-            url.pathname = "/";
-            url.search = "";
-            url.searchParams.set("room", room.id);
-            await navigator.clipboard.writeText(url.toString());
-            shareButton.textContent = "Invite link copied";
-            window.setTimeout(() => { shareButton.textContent = "Copy invite link"; }, 1800);
-            error.textContent = "";
-        } catch (caught) {
-            error.textContent = caught instanceof Error ? caught.message : "Could not copy the invite link.";
-        }
-    });
-
-    content.append(shareButton);
+    content.append(createRoomInviteButton(room.id, config.partyUrl || DEFAULT_PARTY_URL, error));
     addStepper("Minimum skip votes", "minimumVotes", 1);
     addStepper("Maximum queue size", "maxQueueSize", 5);
     addToggle("/next and skip voting", "nextCommand");
@@ -738,8 +739,88 @@ function createRoomSettingsContent(config: ReturnType<typeof getConfig>, room: R
     addToggle("/mute", "muteCommand");
     addToggle("/unmute", "unmuteCommand");
     addToggle("Silent Telegram notifications", "silentNotifications");
+    if (navigator.userAgent.includes("Electron/")) {
+        const telegramButton = document.createElement("button");
+        telegramButton.className = "ytmp-room-settings__share";
+        telegramButton.type = "button";
+        telegramButton.textContent = "Telegram Settings";
+        telegramButton.addEventListener("click", () => {
+            content.closest("dialog")?.close();
+            window.setTimeout(() => window.dispatchEvent(new Event("music-party:open-telegram-settings")), 0);
+        });
+        content.append(telegramButton);
+    }
     content.append(error);
     return content;
+}
+
+function createRoomInviteButton(roomId: string, partyUrl: string, feedback: HTMLElement) {
+    const button = document.createElement("button");
+    button.className = "ytmp-room-settings__share";
+    button.type = "button";
+    button.textContent = "Copy invite link";
+    button.addEventListener("click", async () => {
+        let succeeded = false;
+        feedback.textContent = "";
+        button.disabled = true;
+        try {
+            let inviteBaseUrl = partyUrl;
+            const currentUrl = new URL(partyUrl);
+            if (["127.0.0.1", "localhost", "[::1]"].includes(currentUrl.hostname)) {
+                if (!navigator.userAgent.includes("Electron/")) {
+                    throw new Error("This room is local to this computer. Open it in Music Party Desktop to create a public invite link.");
+                }
+                button.textContent = "Creating temporary link…";
+                inviteBaseUrl = await requestDesktopInviteServerUrl(roomId);
+            }
+            const url = new URL(inviteBaseUrl);
+            url.pathname = "/";
+            url.search = "";
+            url.searchParams.set("room", roomId);
+            await navigator.clipboard.writeText(url.toString());
+            button.textContent = "Invite link copied";
+            window.setTimeout(() => { button.textContent = "Copy invite link"; }, 1800);
+            succeeded = true;
+        } catch (caught) {
+            feedback.textContent = caught instanceof Error ? caught.message : "Could not copy the invite link.";
+            button.textContent = "Copy invite link";
+        } finally {
+            button.disabled = false;
+            if (!succeeded && button.textContent === "Creating temporary link…") button.textContent = "Copy invite link";
+        }
+    });
+    return button;
+}
+
+function requestDesktopInviteServerUrl(roomId: string) {
+    return new Promise<string>((resolve, reject) => {
+        const resultKey = "music-party:invite-link-result";
+        const readyEvent = "music-party:invite-link-ready";
+        const timeout = window.setTimeout(() => {
+            window.removeEventListener(readyEvent, onReady);
+            reject(new Error("Cloudflare Quick Tunnel did not respond. Try again."));
+        }, 65_000);
+        const onReady = () => {
+            window.clearTimeout(timeout);
+            const rawResult = localStorage.getItem(resultKey);
+            localStorage.removeItem(resultKey);
+            try {
+                const result = JSON.parse(rawResult || "{}") as { serverUrl?: string; error?: string };
+                if (!result.serverUrl) throw new Error(result.error || "Could not create a temporary invite link.");
+                resolve(result.serverUrl);
+            } catch (error) {
+                reject(error instanceof Error ? error : new Error("Could not create a temporary invite link."));
+            }
+        };
+        localStorage.removeItem(resultKey);
+        window.addEventListener(readyEvent, onReady, { once: true });
+        window.dispatchEvent(new Event("music-party:create-invite-link"));
+        if (!roomId.trim()) {
+            window.clearTimeout(timeout);
+            window.removeEventListener(readyEvent, onReady);
+            reject(new Error("Join a room before creating an invite link."));
+        }
+    });
 }
 
 function createButtonRoomSettings() {
@@ -747,7 +828,7 @@ function createButtonRoomSettings() {
     setTimeout(() => {
         const btn = createButton({
             children: "Room Settings",
-            join: false,
+            icon: "settings",
             onClick: async () => {
                 const config = getConfig();
                 try {
@@ -782,6 +863,7 @@ function createButtonLeave(
     setTimeout(async () => {
         const btn = createButton({
             children: "Leave Room",
+            icon: "leave",
             onClick: async () => {
                 console.log("Leaving room");
                 const fp = await firstValueFrom(fp$);
@@ -792,7 +874,6 @@ function createButtonLeave(
                 localStorage.removeItem("roomId");
                 window.location.reload();
             },
-            join: false,
         });
         document
             .querySelector(
@@ -806,13 +887,20 @@ function createButtonRoomInformation(socket: Socket) {
     setTimeout(() => {
         const btn = createButton({
             children: "Room Information",
-            join: false,
+            icon: "info",
             onClick: () => {
                 const config = getConfig();
+                const feedback = document.createElement("p");
+                feedback.className = "ytmp-room-settings__error";
+                feedback.setAttribute("role", "status");
+                const content = document.createElement("div");
+                content.className = "ytmp-room-settings";
+                content.append(createRoomInviteButton(config.roomId || "", config.partyUrl || DEFAULT_PARTY_URL, feedback), feedback);
                 showRoomDialog({
                     title: "Room Information",
+                    content,
                     rows: [
-                        { label: "Room ID", value: config.roomId || "Not joined" },
+                        { label: "Room ID", value: config.roomId || "" },
                         {
                             label: "Party URL",
                             value: config.partyUrl || DEFAULT_PARTY_URL,
@@ -833,10 +921,109 @@ function createButtonRoomInformation(socket: Socket) {
     }, 2000);
 }
 
+function createRoomDataButton(kind: "queue" | "members") {
+    setTimeout(() => {
+        const isQueue = kind === "queue";
+        const button = createButton({
+            children: isQueue ? "Queue" : "Room Members",
+            icon: isQueue ? "queue" : "members",
+            onClick: () => {
+                const config = getConfig();
+                const content = document.createElement("section");
+                content.className = "ytmp-room-live-panel";
+                const status = document.createElement("p");
+                status.className = "ytmp-room-live-panel__status";
+                const list = document.createElement("ul");
+                list.className = "ytmp-room-live-panel__list";
+                content.append(status, list);
+
+                const refresh = async () => {
+                    if (!config.partyUrl || !config.roomId) {
+                        status.textContent = "Join a room to see its shared queue and members.";
+                        list.replaceChildren();
+                        return;
+                    }
+                    status.textContent = isQueue ? "Loading the shared queue…" : "Loading room members…";
+                    try {
+                        const baseUrl = config.partyUrl.replace(/\/$/, "");
+                        const response = await fetch(`${baseUrl}/api/rooms/${encodeURIComponent(config.roomId)}`);
+                        const room = await response.json().catch(() => ({})) as {
+                            message?: string;
+                            queue?: Array<{ url?: string; title?: string; addedBy?: string | null }>;
+                            devices?: Array<{ name?: string; createdAt?: string }>;
+                        };
+                        if (!response.ok) throw new Error(room.message || "Could not load room information.");
+                        const entries = isQueue ? room.queue ?? [] : room.devices ?? [];
+                        status.textContent = isQueue
+                            ? `${entries.length} ${entries.length === 1 ? "track" : "tracks"} in the shared queue`
+                            : `${entries.length} ${entries.length === 1 ? "player has" : "players have"} joined this room`;
+                        list.replaceChildren();
+                        if (entries.length === 0) {
+                            const empty = document.createElement("li");
+                            empty.className = "ytmp-room-live-panel__empty";
+                            empty.textContent = isQueue
+                                ? "No tracks are waiting. Add a song in YouTube Music to put it in the room queue."
+                                : "No players have joined yet. Share the room details so others can connect.";
+                            list.append(empty);
+                            return;
+                        }
+                        for (const entry of entries) {
+                            const item = document.createElement("li");
+                            item.className = "ytmp-room-live-panel__item";
+                            const title = document.createElement("span");
+                            title.className = "ytmp-room-live-panel__title";
+                            const detail = document.createElement("span");
+                            detail.className = "ytmp-room-live-panel__detail";
+                            if (isQueue) {
+                                const track = entry as { url?: string; title?: string; addedBy?: string | null };
+                                title.textContent = track.title?.trim() || track.url || "Untitled track";
+                                detail.textContent = track.addedBy ? `Added by ${track.addedBy}` : "Added to the room queue";
+                            } else {
+                                const member = entry as { name?: string; createdAt?: string };
+                                title.textContent = member.name?.trim() || "Player";
+                                detail.textContent = member.createdAt
+                                    ? `Joined ${new Date(member.createdAt).toLocaleString()}`
+                                    : "Joined this room";
+                            }
+                            item.append(title, detail);
+                            list.append(item);
+                        }
+                    } catch (error) {
+                        status.textContent = error instanceof Error ? error.message : "Could not load room information.";
+                        list.replaceChildren();
+                    }
+                };
+                const dialog = showRoomDialog({ title: isQueue ? "Room Queue" : "Room Members", content });
+                roomPanelRefreshers.add(refresh);
+                dialog.addEventListener("close", () => roomPanelRefreshers.delete(refresh), { once: true });
+                void refresh();
+            },
+        });
+        document
+            .querySelector("[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']")
+            ?.append(button);
+    }, 2000);
+}
+
+function createServerSettingsButton() {
+    if (!navigator.userAgent.includes("Electron/")) return;
+    setTimeout(() => {
+        const button = createButton({
+            children: "Server Settings",
+            icon: "server",
+            onClick: () => window.dispatchEvent(new Event("music-party:open-server-settings")),
+        });
+        document
+            .querySelector("[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']")
+            ?.append(button);
+    }, 2000);
+}
+
 function createJoinButton() {
     setTimeout(async () => {
         const btn = createButton({
             children: "Join Room",
+            icon: "join",
             onClick: () => {
                 const currentConfig = getConfig();
                 showRoomDialog({
@@ -862,12 +1049,64 @@ function createJoinButton() {
                     },
                 });
             },
-            join: true,
         });
         document
             .querySelector(
                 "[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']"
             )
+            ?.append(btn);
+    }, 2000);
+}
+
+function createRoomButton() {
+    setTimeout(() => {
+        const btn = createButton({
+            children: "Create Room",
+            icon: "create",
+            onClick: () => {
+                const savedHandle = localStorage.getItem("music-party-handle")?.trim();
+                showRoomDialog({
+                    title: "Create Room",
+                    fields: [
+                        { name: "name", label: "Room name", value: "My listening room" },
+                        { name: "handle", label: "Your name", value: savedHandle || `Guest-${crypto.randomUUID().slice(0, 8)}` },
+                    ],
+                    submitLabel: "Create",
+                    onSubmit: async (values) => {
+                        const partyUrl = getConfig().partyUrl || DEFAULT_PARTY_URL;
+                        const baseUrl = partyUrl.replace(/\/$/, "");
+                        const apiRequest = async <T,>(path: string, body?: Record<string, string>): Promise<T> => {
+                            const response = await fetch(`${baseUrl}${path}`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: body ? JSON.stringify(body) : undefined,
+                            });
+                            if (!response.ok) {
+                                const result = await response.json().catch(() => ({}));
+                                throw new Error(typeof result.message === "string" ? result.message : "Could not create room.");
+                            }
+                            return response.json() as Promise<T>;
+                        };
+                        try {
+                            const generated = await apiRequest<{ id: string }>("/api/rooms/generate");
+                            const room = await apiRequest<{ id: string }>("/api/rooms", { id: generated.id, name: values.name });
+                            await apiRequest(`/api/rooms/${encodeURIComponent(room.id)}/join`, { handle: values.handle });
+                            localStorage.setItem("roomId", room.id);
+                            localStorage.setItem("partyUrl", partyUrl);
+                            localStorage.setItem("music-party-handle", values.handle);
+                            window.location.reload();
+                        } catch (caught) {
+                            showRoomDialog({
+                                title: "Could not create room",
+                                rows: [{ label: "Error", value: caught instanceof Error ? caught.message : "Could not create room." }],
+                            });
+                        }
+                    },
+                });
+            },
+        });
+        document
+            .querySelector("[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']")
             ?.append(btn);
     }, 2000);
 }
@@ -1019,14 +1258,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     const socket = io(config.partyUrl || DEFAULT_PARTY_URL);
     const ROOM_ID = config.roomId as string;
 
-    createButtonRoomInformation(socket);
-
-    if (config.partyUrl && config.roomId) {
+    createServerSettingsButton();
+    const isJoined = Boolean(config.roomId?.trim());
+    if (isJoined) {
+        createButtonRoomInformation(socket);
+        createRoomDataButton("queue");
+        createRoomDataButton("members");
         createButtonLeave(socket, config);
         createButtonRoomSettings();
     } else {
+        createRoomButton();
         createJoinButton();
     }
+
+    socket.on("roomUpdated", () => {
+        for (const refresh of roomPanelRefreshers) void refresh();
+    });
 
     let queues: Queue[] = [];
     let observedVideo: HTMLVideoElement | null = null;

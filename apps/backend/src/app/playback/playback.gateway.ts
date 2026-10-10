@@ -51,11 +51,13 @@ export class PlaybackGateway implements OnGatewayDisconnect {
         playbackState?: 'playing' | 'paused' | 'standby' | null,
         currentlyPlaying?: NowPlaying | null,
     ) {
-        this.wss?.to(this.dashboardRoom(roomId)).emit('roomUpdated', {
+        const update = {
             joinedDevice,
             ...(playbackState !== undefined ? { playbackState } : {}),
             ...(currentlyPlaying !== undefined ? { currentlyPlaying } : {}),
-        });
+        };
+        this.wss?.to(this.dashboardRoom(roomId)).emit('roomUpdated', update);
+        this.wss?.to(roomId).emit('roomUpdated', update);
     }
 
     async handleDisconnect(client: Socket) {

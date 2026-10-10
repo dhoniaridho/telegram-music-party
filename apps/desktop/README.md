@@ -1,12 +1,12 @@
 # Music Party desktop
 
-The desktop app provides one window for YouTube Music and the party dashboard. It bundles the Nest API server with SQLite storage, and loads the existing party content script into a persistent YouTube Music session. Sign-in and room settings survive app restarts. When a room is joined, open **Room Settings** from YouTube Music’s sidebar to change room controls without switching to the dashboard tab.
+The desktop app opens YouTube Music in one window and loads the existing party content script into a persistent session. Room creation, joining, room settings, invite sharing, and server settings are available from YouTube Music’s sidebar. The dashboard is available through the configured server URL in a browser.
 
-By default, the dashboard and extension connect to the public server at `https://party.dhoniaridho.com`, so new rooms can be shared with other listeners. Use **Server** in the app toolbar to switch to the bundled local server at `http://127.0.0.1:3417` or another hosted HTTPS server. The selected URL is saved between launches. Rooms created on the local server stay private to this computer.
+By default, the desktop app runs its bundled local server and opens a Cloudflare Quick Tunnel. The temporary `trycloudflare.com` URL changes between runs and works only while the app and tunnel are running. Share a room invite from **Room Settings** in YouTube Music’s sidebar. Quick Tunnels are intended for testing and development; for a permanent address, configure a hosted HTTPS server in **Server Settings**.
 
 In YouTube Music, open **Room Settings** and choose **Copy invite link** to share a room. Opening the link joins the room automatically; if the visitor has no saved handle, the dashboard assigns a guest handle.
 
-The local server uses SQLite data under the app's user data directory. In **Server** settings, enter the optional Telegram bot token used by `TELEGRAM_BOT_TOKEN`; changing it restarts the bundled server. The token is saved in the app's per-user settings file with owner-only permissions on macOS and Linux. If the app starts with `TELEGRAM_BOT_TOKEN` in its environment and no saved token, that value is filled into the setting. This configures only the local server. For a hosted server, set the token in that server's environment.
+The local server uses SQLite data under the app's user data directory. Use **Telegram Settings** in YouTube Music’s sidebar to set the optional `TELEGRAM_BOT_TOKEN`; changing it restarts the bundled server when active. The token is saved in the app's per-user settings file with owner-only permissions on macOS and Linux. If the app starts with `TELEGRAM_BOT_TOKEN` in its environment and no saved token, that value is filled into Telegram Settings. This configures only the local server. For a hosted server, set the token in that server's environment.
 
 ## Develop
 

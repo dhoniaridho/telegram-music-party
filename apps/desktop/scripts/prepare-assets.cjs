@@ -13,6 +13,7 @@ const extensionDist = path.resolve(appRoot, "../extension/dist");
 const assetsDir = path.join(generatedDir, "assets");
 const extensionDir = path.join(assetsDir, "extension");
 const serverDir = path.join(generatedDir, "server");
+const cloudflaredPath = path.join(assetsDir, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
 const localPartyUrl = "http://127.0.0.1:3417";
 
 function run(command, args, cwd) {
@@ -36,6 +37,67 @@ async function copyServer() {
   await fs.copyFile(path.join(appRoot, "src/server-runner.cjs"), path.join(serverDir, "desktop-server-runner.cjs"));
 }
 
+async function prepareCloudflared() {
+  const target = process.platform === "darwin" ? `darwin-${process.arch}`
+    : process.platform === "linux" ? `linux-${process.arch}`
+      : process.platform === "win32" ? `windows-${process.arch}` : "";
+  const downloads = {
+    "darwin-arm64": { url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz", archive: true },
+    "darwin-x64": { url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz", archive: true },
+    "linux-arm64": { url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64" },
+    "linux-x64": { url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" },
+    "windows-x64": { url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" },
+  };
+  const download = downloads[target];
+  if (!download) throw new Error(`Cloudflare Tunnel is not available for ${process.platform}/${process.arch}.`);
+
+  const cachedBinary = path.join(cacheDir, `cloudflared-${target}${process.platform === "win32" ? ".exe" : ""}`);
+  if (!await fs.access(cachedBinary).then(() => true, () => false)) {
+    console.log(`Downloading Cloudflare Tunnel for ${target}…`);
+    const response = await fetch(download.url);
+    if (!response.ok) throw new Error(`Could not download cloudflared (${response.status}).`);
+    const totalBytes = Number(response.headers.get("content-length")) || 0;
+    const chunks = [];
+    let receivedBytes = 0;
+    let lastReportedPercent = 0;
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      receivedBytes += value.byteLength;
+      const percent = totalBytes ? Math.floor((receivedBytes / totalBytes) * 100) : 0;
+      if (percent >= lastReportedPercent + 10) {
+        lastReportedPercent = percent;
+        console.log(totalBytes
+          ? `Cloudflare Tunnel download: ${percent}%`
+          : `Cloudflare Tunnel downloaded ${(receivedBytes / (1024 * 1024)).toFixed(1)} MB`);
+      }
+    }
+    const bytes = Buffer.concat(chunks);
+    if (download.archive) {
+      const archivePath = `${cachedBinary}.tgz`;
+      const extractDir = `${cachedBinary}.extract`;
+      await fs.writeFile(archivePath, bytes);
+      await fs.rm(extractDir, { recursive: true, force: true });
+      await fs.mkdir(extractDir, { recursive: true });
+      run("tar", ["-xzf", archivePath, "-C", extractDir, "cloudflared"], appRoot);
+      await fs.copyFile(path.join(extractDir, "cloudflared"), cachedBinary);
+      await fs.rm(archivePath, { force: true });
+      await fs.rm(extractDir, { recursive: true, force: true });
+    } else {
+      await fs.writeFile(cachedBinary, bytes);
+    }
+  } else {
+    console.log(`Using cached Cloudflare Tunnel binary for ${target}.`);
+  }
+  await fs.copyFile(cachedBinary, cloudflaredPath);
+  if (process.platform !== "win32") await fs.chmod(cloudflaredPath, 0o755);
+  const version = spawnSync(cloudflaredPath, ["--version"], { encoding: "utf8" });
+  if (version.status !== 0) throw new Error("The downloaded cloudflared binary could not be run.");
+  console.log(`Prepared ${version.stdout.trim()} for ${target}.`);
+}
+
 async function prepareAssets() {
   await fs.rm(assetsDir, { recursive: true, force: true });
   await fs.mkdir(extensionDir, { recursive: true });
@@ -53,6 +115,7 @@ async function prepareAssets() {
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   await fs.mkdir(cacheDir, { recursive: true });
+  await prepareCloudflared();
   if (await fs.access(cachedFilters).then(() => true, () => false)) {
     await fs.copyFile(cachedFilters, path.join(assetsDir, "adblock-filters.bin"));
   } else {
@@ -63,8 +126,8 @@ async function prepareAssets() {
   }
   if (process.argv.includes("--with-server")) await copyServer();
   console.log(process.argv.includes("--with-server")
-    ? "Prepared the local API, unpacked party integration, and bundled ad filters."
-    : "Prepared the unpacked party integration and bundled ad filters.");
+    ? "Prepared the local API, party integration, Cloudflare Tunnel, and ad filters."
+    : "Prepared the party integration, Cloudflare Tunnel, and ad filters.");
 }
 
 prepareAssets().catch((error) => {

@@ -8,43 +8,57 @@
     <link rel="stylesheet" href="./shell.css" />
   </head>
   <body>
-    <header class="toolbar">
-      <div class="brand" aria-label="Music Party">MP</div>
-      <nav class="tabs" aria-label="App pages">
-        <button class="tab is-active" type="button" data-view="music" aria-selected="true">YouTube Music</button>
-        <button class="tab" type="button" data-view="dashboard" aria-selected="false">Party dashboard</button>
-      </nav>
-      <div class="toolbar-end">
-        <span class="blocking-status"><span class="status-dot" aria-hidden="true"></span>Ad blocking on</span>
-        <button class="server-settings" type="button">Server</button>
-        <button class="reload" type="button" title="Reload current page" aria-label="Reload current page">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4.6 9A7.5 7.5 0 0 1 18 6l2 2M4 17v-5h5m10.4 3A7.5 7.5 0 0 1 6 18l-2-2" /></svg>
-        </button>
+    <main class="startup-screen" aria-live="polite">
+      <div class="startup-card">
+        <span class="startup-mark" aria-hidden="true">MP</span>
+        <h1>Music Party</h1>
+        <p class="startup-status">Preparing YouTube Music…</p>
       </div>
-    </header>
+    </main>
     <dialog class="settings-dialog" aria-labelledby="settings-title">
       <form class="settings-form">
         <div class="dialog-heading">
           <h1 id="settings-title">Party server</h1>
-          <button class="dialog-close" type="button" aria-label="Close server settings">×</button>
+          <button class="dialog-close settings-close" type="button" aria-label="Close server settings">×</button>
         </div>
-        <p class="settings-copy">Use the public server to share rooms with other listeners. The token below applies only to this computer’s local server.</p>
+        <p class="settings-copy">Cloudflare Quick Tunnel is optional. It starts only when you choose Start tunnel or create an invite link. Its URL works while the app is open.</p>
         <label for="server-url">Server URL</label>
         <input id="server-url" name="serverUrl" type="url" required autocomplete="url" />
-        <div class="public-server-choice">
-          <span>Public server: <code>https://party.dhoniaridho.com</code></span>
-          <button class="public-server-button" type="button">Use public server</button>
+        <input id="server-mode" name="serverMode" type="hidden" value="tunnel" />
+        <div class="tunnel-choice">
+          <label class="tunnel-toggle" for="share-tunnel">
+            <input id="share-tunnel" type="checkbox" />
+            <span>Share the temporary tunnel URL with listeners</span>
+          </label>
+          <p class="tunnel-help">When off, the party server stays local to this computer.</p>
+          <button class="hosted-button" type="button">Use a hosted server URL</button>
         </div>
-        <label class="token-label" for="telegram-token">Telegram bot token</label>
+        <p class="settings-error" role="alert" hidden></p>
+        <p class="settings-progress" role="status" hidden></p>
+        <div class="dialog-actions">
+          <button class="cancel-button settings-cancel" type="button">Cancel</button>
+          <button class="save-button" type="submit">Save settings</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="telegram-dialog" aria-labelledby="telegram-title">
+      <form class="telegram-form">
+        <div class="dialog-heading">
+          <h1 id="telegram-title">Telegram settings</h1>
+          <button class="telegram-close dialog-close" type="button" aria-label="Close Telegram settings">×</button>
+        </div>
+        <p class="settings-copy">This token configures Telegram for the bundled local server. Hosted servers use their own token.</p>
+        <label for="telegram-token">Telegram bot token</label>
         <div class="token-input-row">
           <input id="telegram-token" name="telegramBotToken" type="password" autocomplete="off" spellcheck="false" />
           <button class="token-visibility" type="button" aria-controls="telegram-token" aria-pressed="false">Show</button>
         </div>
-        <p class="field-help">Optional. Paste the value of <code>TELEGRAM_BOT_TOKEN</code>. Saving a change restarts the local server.</p>
-        <p class="settings-error" role="alert" hidden></p>
+        <p class="field-help">Paste the value of <code>TELEGRAM_BOT_TOKEN</code>. Saving restarts the local server when it is active.</p>
+        <p class="telegram-error settings-error" role="alert" hidden></p>
+        <p class="telegram-progress settings-progress" role="status" hidden></p>
         <div class="dialog-actions">
-          <button class="cancel-button" type="button">Cancel</button>
-          <button class="save-button" type="submit">Save settings</button>
+          <button class="telegram-cancel cancel-button" type="button">Cancel</button>
+          <button class="telegram-save save-button" type="submit">Save Telegram settings</button>
         </div>
       </form>
     </dialog>

@@ -122,6 +122,34 @@ export class PlaybackApiController {
         };
     }
 
+    @Get('rooms/:roomId/recommendations')
+    async recommendations(@Param('roomId') roomId: string) {
+        const room = await this.playback.getRoom(roomId);
+        if (!room) throw new NotFoundException('Room not found');
+
+        const queue = await this.playback.getQueues(roomId);
+        const currentVideoId = this.gateway.getCurrentlyPlaying(roomId)?.videoId;
+        const excludedVideoIds = new Set([
+            currentVideoId,
+            ...queue.map((track) => track.url),
+        ].filter((videoId): videoId is string => Boolean(videoId)));
+        let songs = await this.youtubeMusic.getTrendingSongs();
+        let availableSongs = songs.filter((song) => !excludedVideoIds.has(song.videoId));
+        if (!availableSongs.length) {
+            songs = await this.youtubeMusic.searchSongs('trending songs Indonesia');
+            availableSongs = songs.filter((song) => !excludedVideoIds.has(song.videoId));
+        }
+
+        return availableSongs.slice(0, 20).map((track) => ({
+            videoId: track.videoId,
+            url: track.videoId,
+            title: track.name,
+            artist: track.artist.name,
+            duration: track.duration ?? 0,
+            artwork: track.thumbnails.at(-1)?.url ?? null,
+        }));
+    }
+
     @Post('rooms/:roomId/join')
     async joinRoom(
         @Param('roomId') roomId: string,
@@ -211,14 +239,82 @@ export class PlaybackApiController {
         if (!query || query.length < 2) {
             throw new BadRequestException('Enter at least two characters');
         }
-        const results = await this.youtubeMusic.searchSongs(query);
-        return results.slice(0, 10).map((song) => ({
-            videoId: song.videoId,
-            title: song.name,
-            artist: song.artist?.name ?? 'Unknown artist',
-            duration: song.duration ?? 0,
-            artwork: song.thumbnails?.[0]?.url ?? null,
-        }));
+        const [songs, artists, albums] = await Promise.all([
+            this.youtubeMusic.searchSongs(query).catch(() => null),
+            this.youtubeMusic.searchArtists(query).catch(() => null),
+            this.youtubeMusic.searchAlbums(query).catch(() => null),
+        ]);
+        if (songs === null && artists === null && albums === null) {
+            throw new InternalServerErrorException('YouTube Music search is unavailable');
+        }
+        return {
+            songs: (songs ?? []).map((song) => ({
+                videoId: song.videoId,
+                title: song.name,
+                artist: song.artist?.name ?? 'Unknown artist',
+                duration: song.duration ?? 0,
+                artwork: song.thumbnails?.at(-1)?.url ?? null,
+            })),
+            artists: (artists ?? []).map((artist) => ({
+                artistId: artist.artistId,
+                name: artist.name,
+                artwork: artist.thumbnails.at(-1)?.url ?? null,
+            })),
+            albums: (albums ?? []).map((album) => ({
+                albumId: album.albumId,
+                playlistId: album.playlistId,
+                name: album.name,
+                artist: album.artist.name,
+                year: album.year,
+                artwork: album.thumbnails.at(-1)?.url ?? null,
+            })),
+        };
+    }
+
+    @Get('artists/:artistId')
+    async artistDetails(@Param('artistId') artistId: string) {
+        const artist = await this.youtubeMusic.getArtist(artistId);
+        return {
+            type: 'ARTIST',
+            artistId: artist.artistId,
+            name: artist.name,
+            artwork: artist.thumbnails.at(-1)?.url ?? null,
+            topSongs: artist.topSongs.map((song) => ({
+                videoId: song.videoId,
+                title: song.name,
+                artist: song.artist.name,
+                duration: song.duration ?? 0,
+                artwork: song.thumbnails.at(-1)?.url ?? null,
+            })),
+            topAlbums: artist.topAlbums.map((album) => ({
+                albumId: album.albumId,
+                playlistId: album.playlistId,
+                name: album.name,
+                artist: album.artist.name,
+                year: album.year,
+                artwork: album.thumbnails.at(-1)?.url ?? null,
+            })),
+        };
+    }
+
+    @Get('albums/:albumId')
+    async albumDetails(@Param('albumId') albumId: string) {
+        const album = await this.youtubeMusic.getAlbum(albumId);
+        return {
+            type: 'ALBUM',
+            albumId: album.albumId,
+            name: album.name,
+            artist: album.artist.name,
+            year: album.year,
+            artwork: album.thumbnails.at(-1)?.url ?? null,
+            songs: album.songs.map((song) => ({
+                videoId: song.videoId,
+                title: song.name,
+                artist: song.artist.name,
+                duration: song.duration ?? 0,
+                artwork: song.thumbnails.at(-1)?.url ?? null,
+            })),
+        };
     }
 
     @Post('rooms/:roomId/queue')

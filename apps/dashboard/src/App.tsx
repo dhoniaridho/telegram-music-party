@@ -16,6 +16,20 @@ type Track = {
   duration?: number;
   artwork?: string | null;
 };
+type ArtistResult = { artistId: string; name: string; artwork: string | null };
+type AlbumResult = {
+  albumId: string;
+  playlistId: string;
+  name: string;
+  artist: string;
+  year: number | null;
+  artwork: string | null;
+};
+type SearchResults = { songs: Track[]; artists: ArtistResult[]; albums: AlbumResult[] };
+type ArtistDetails = ArtistResult & { type: "ARTIST"; topSongs: Track[]; topAlbums: AlbumResult[] };
+type AlbumDetails = Omit<AlbumResult, "playlistId"> & { type: "ALBUM"; songs: Track[] };
+type SearchDetails = ArtistDetails | AlbumDetails;
+type SearchDetailSelection = { type: "artist" | "album"; id: string };
 type NowPlaying = {
   videoId: string | null;
   title: string;
@@ -101,7 +115,19 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState<Track[]>([]);
+  const [artistResults, setArtistResults] = useState<ArtistResult[]>([]);
+  const [albumResults, setAlbumResults] = useState<AlbumResult[]>([]);
+  const [searchError, setSearchError] = useState("");
   const [searching, setSearching] = useState(false);
+  const [recommendations, setRecommendations] = useState<Track[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
+  const [visibleResultCount, setVisibleResultCount] = useState(10);
+  const searchResultsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const [searchDetail, setSearchDetail] = useState<SearchDetailSelection | null>(null);
+  const [searchDetailData, setSearchDetailData] = useState<SearchDetails | null>(null);
+  const [loadingSearchDetail, setLoadingSearchDetail] = useState(false);
+  const [searchDetailError, setSearchDetailError] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
@@ -190,6 +216,78 @@ export default function App() {
   const nowPlayingLabel = room?.playbackState === "playing" ? "Now playing" : room?.playbackState === "paused" ? "Paused" : "Selected in YouTube Music";
   const playbackLabel = room?.playbackState === "playing" ? "Playing on YouTube Music" : room?.playbackState === "paused" ? "Paused on YouTube Music" : room?.connectedClients ? "Ready on YouTube Music" : "YouTube Music disconnected";
   const queueTracks = useMemo(() => room?.queue ?? [], [room]);
+  const maxSearchResultCount = Math.max(results.length, artistResults.length, albumResults.length);
+  const recommendationRoomId = room?.id ?? "";
+  const recommendationExclusions = [currentlyPlaying?.videoId, ...queueTracks.map((track) => track.videoId ?? track.url)]
+    .filter((videoId): videoId is string => Boolean(videoId))
+    .join(",");
+
+  useEffect(() => {
+    let active = true;
+    if (!recommendationRoomId || !isJoined) {
+      setRecommendations([]);
+      setRecommendationError("");
+      setLoadingRecommendations(false);
+      return () => { active = false; };
+    }
+
+    setLoadingRecommendations(true);
+    setRecommendationError("");
+    void request<Track[]>(`/api/rooms/${encodeURIComponent(recommendationRoomId)}/recommendations`)
+      .then((tracks) => {
+        if (!active) return;
+        const excluded = new Set(recommendationExclusions.split(",").filter(Boolean));
+        setRecommendations(tracks.filter((track) => track.videoId && !excluded.has(track.videoId)).slice(0, 4));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setRecommendations([]);
+        setRecommendationError(err instanceof Error ? err.message : "Could not load music recommendations.");
+      })
+      .finally(() => {
+        if (active) setLoadingRecommendations(false);
+      });
+
+    return () => { active = false; };
+  }, [recommendationRoomId, isJoined, recommendationExclusions]);
+
+  useEffect(() => {
+    const sentinel = searchResultsSentinelRef.current;
+    if (!sentinel || activeTab !== "discover" || visibleResultCount >= maxSearchResultCount) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisibleResultCount((count) => Math.min(count + 10, maxSearchResultCount));
+      }
+    }, { rootMargin: "240px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeTab, maxSearchResultCount, visibleResultCount]);
+
+  useEffect(() => {
+    if (!searchDetail) {
+      setSearchDetailData(null);
+      setSearchDetailError("");
+      setLoadingSearchDetail(false);
+      return;
+    }
+
+    let active = true;
+    setSearchDetailData(null);
+    setSearchDetailError("");
+    setLoadingSearchDetail(true);
+    const path = searchDetail.type === "artist"
+      ? `/api/artists/${encodeURIComponent(searchDetail.id)}`
+      : `/api/albums/${encodeURIComponent(searchDetail.id)}`;
+    void request<SearchDetails>(path)
+      .then((detail) => { if (active) setSearchDetailData(detail); })
+      .catch((err) => {
+        if (active) setSearchDetailError(err instanceof Error ? err.message : "Could not load details.");
+      })
+      .finally(() => { if (active) setLoadingSearchDetail(false); });
+
+    return () => { active = false; };
+  }, [searchDetail]);
 
   const voterId = () => {
     let id = localStorage.getItem("music-party-voter-id");
@@ -257,14 +355,36 @@ export default function App() {
     finally { setBusy(""); }
   };
 
-  const search = async (event: React.FormEvent) => {
+  const searchFor = async (searchQuery: string) => {
+    const normalizedQuery = searchQuery.trim();
+    if (normalizedQuery.length < 2) return;
+    setSubmittedQuery(normalizedQuery);
+    setVisibleResultCount(10);
+    setSearching(true);
+    setSearchError("");
+    setResults([]);
+    setArtistResults([]);
+    setAlbumResults([]);
+    try {
+      const found = await request<SearchResults>("/api/search", {
+        method: "POST",
+        body: JSON.stringify({ query: normalizedQuery }),
+      });
+      setResults(found.songs ?? []);
+      setArtistResults(found.artists ?? []);
+      setAlbumResults(found.albums ?? []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Search failed";
+      setSearchError(message);
+      notify(message);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const search = (event: React.FormEvent) => {
     event.preventDefault();
-    if (query.trim().length < 2) return;
-    setSubmittedQuery(query.trim());
-    setSearching(true); setResults([]);
-    try { setResults(await request<Track[]>("/api/search", { method: "POST", body: JSON.stringify({ query }) })); }
-    catch (err) { notify(err instanceof Error ? err.message : "Search failed"); }
-    finally { setSearching(false); }
+    void searchFor(query);
   };
 
   const addTrack = async (track: Track) => {
@@ -272,7 +392,16 @@ export default function App() {
     setBusy(track.videoId);
     try {
       await request(`/api/rooms/${encodeURIComponent(room.id)}/queue`, { method: "POST", body: JSON.stringify({ videoId: track.videoId, handle, artwork: track.artwork }) });
-      notify("Added to the queue"); setResults((items) => items.filter((item) => item.videoId !== track.videoId)); void loadRoom();
+      notify("Added to the queue");
+      setResults((items) => items.filter((item) => item.videoId !== track.videoId));
+      setRecommendations((items) => items.filter((item) => item.videoId !== track.videoId));
+      setSearchDetailData((detail) => {
+        if (!detail) return detail;
+        return detail.type === "ARTIST"
+          ? { ...detail, topSongs: detail.topSongs.filter((item) => item.videoId !== track.videoId) }
+          : { ...detail, songs: detail.songs.filter((item) => item.videoId !== track.videoId) };
+      });
+      void loadRoom();
     } catch (err) { notify(err instanceof Error ? err.message : "Could not add track"); }
     finally { setBusy(""); }
   };
@@ -439,6 +568,27 @@ export default function App() {
                           </div>)}
                         </div> : <div className="flex min-h-40 flex-col items-center justify-center gap-2 border-y border-default py-6 text-center"><b>Queue is empty</b><p className="text-sm text-foreground/60">Search for a track and add it to this room.</p><Button variant="secondary" size="sm" onPress={() => setActiveTab("discover")}><Icon name="search" size={15} /> Find music</Button></div>}
                       </section>
+
+                      <section aria-labelledby="overview-recommendations-title" className="min-w-0">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <h2 id="overview-recommendations-title" className="text-lg font-semibold">Trending songs & picks</h2>
+                            <p className="mt-1 text-sm text-foreground/60">From YouTube Music</p>
+                          </div>
+                          <Button variant="ghost" size="sm" onPress={() => setActiveTab("discover")}>Search music</Button>
+                        </div>
+                        {loadingRecommendations ? <p className="border-y border-default py-6 text-center text-sm text-foreground/60" role="status">Loading trending songs…</p>
+                          : recommendationError ? <p className="border-y border-default py-6 text-center text-sm text-danger" role="alert">Could not load songs: {recommendationError}</p>
+                            : recommendations.length ? <div className="divide-y divide-default">
+                              {recommendations.map((track) => <div className="flex min-h-[4.25rem] items-center gap-3 py-2" key={track.videoId}>
+                                <div className="size-11 shrink-0 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-400">
+                                  <img src={track.artwork ?? `https://img.youtube.com/vi/${track.videoId}/hqdefault.jpg`} alt="" className="size-full object-cover" />
+                                </div>
+                                <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{track.title}</p><p className="truncate text-sm text-foreground/60">{track.artist} · {formatDuration(track.duration)}</p></div>
+                                <Button variant="outline" size="sm" isPending={busy === track.videoId} onPress={() => void addTrack(track)}><Icon name="plus" size={15} /> Add</Button>
+                              </div>)}
+                            </div> : <p className="border-y border-default py-6 text-center text-sm text-foreground/60">No songs are available right now. Search to find something else.</p>}
+                      </section>
                     </div>
 
                     <aside className="grid content-start gap-6" aria-label="Room status">
@@ -455,7 +605,38 @@ export default function App() {
                   </div>
                 </section>
               </Tabs.Panel>
-              <Tabs.Panel id="discover" className="dashboard-tab-panel min-w-0 pt-4"><Card role="region" aria-label="Search results" className="panel min-w-0 rounded-3xl p-5"><div className="panel-heading mb-4"><h3>{submittedQuery ? `Results for “${submittedQuery}”` : "Search results"}</h3></div>{searching ? <p className="py-8 text-center text-foreground/60">Searching music…</p> : results.length > 0 ? <div className="results-list divide-y divide-default">{results.map((track) => <div className="result-row flex min-h-16 items-center gap-3 py-2" key={track.videoId}><img src={track.artwork ?? ""} alt="" /><div className="track-info grid min-w-0 flex-1 gap-1"><b>{track.title}</b><span>{track.artist} · {formatDuration(track.duration)}</span></div><Button variant="outline" size="sm" isDisabled={joinedRoomId !== room?.id || !handle.trim()} isPending={busy === track.videoId} onPress={() => void addTrack(track)}><Icon name="plus" size={15} /> Add</Button></div>)}</div> : <p className="py-8 text-center text-foreground/60">{submittedQuery ? "No tracks found. Try another search." : "Search above to find music for this room."}</p>}</Card></Tabs.Panel>
+              <Tabs.Panel id="discover" className="dashboard-tab-panel min-w-0 pt-4">
+                <Card role="region" aria-label="Search results" className="panel min-w-0 rounded-3xl p-5">
+                  <div className="panel-heading mb-4"><h3>{submittedQuery ? `Results for “${submittedQuery}”` : "Search results"}</h3></div>
+                  {searching ? <p className="py-8 text-center text-foreground/60" role="status">Searching songs, artists, and albums…</p>
+                    : searchError ? <p className="py-8 text-center text-danger" role="alert">Could not search music: {searchError}</p>
+                      : maxSearchResultCount > 0 ? <>
+                        <div className="grid gap-7">
+                          {artistResults.length > 0 && <section aria-labelledby="artist-results-title">
+                            <div className="mb-3 flex items-baseline justify-between gap-3"><h4 id="artist-results-title" className="font-semibold">Artists</h4><span className="text-sm text-foreground/60">{artistResults.length}</span></div>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                              {artistResults.slice(0, visibleResultCount).map((artist) => <Button key={artist.artistId} variant="ghost" className="flex h-auto min-w-0 flex-col gap-2 rounded-3xl p-3 text-center hover:bg-default/50" aria-label={`View ${artist.name} details`} onPress={() => setSearchDetail({ type: "artist", id: artist.artistId })}>
+                                <span className="grid size-24 place-items-center overflow-hidden rounded-full bg-default/50">{artist.artwork && <img src={artist.artwork} alt="" className="size-full object-cover" />}</span><span className="w-full truncate font-medium">{artist.name}</span><span className="text-xs text-foreground/60">Artist</span>
+                              </Button>)}
+                            </div>
+                          </section>}
+                          {albumResults.length > 0 && <section aria-labelledby="album-results-title">
+                            <div className="mb-3 flex items-baseline justify-between gap-3"><h4 id="album-results-title" className="font-semibold">Albums</h4><span className="text-sm text-foreground/60">{albumResults.length}</span></div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {albumResults.slice(0, visibleResultCount).map((album) => <Button key={album.albumId} variant="ghost" className="flex h-auto min-w-0 items-center justify-start gap-3 rounded-3xl p-3 text-left hover:bg-default/50" aria-label={`View ${album.name} album details`} onPress={() => setSearchDetail({ type: "album", id: album.albumId })}>
+                                <span className="size-16 shrink-0 overflow-hidden rounded-xl bg-default/50">{album.artwork && <img src={album.artwork} alt="" className="size-full object-cover" />}</span><span className="grid min-w-0 gap-1"><b className="truncate">{album.name}</b><span className="truncate text-sm text-foreground/60">{album.artist}{album.year ? ` · ${album.year}` : ""}</span></span>
+                              </Button>)}
+                            </div>
+                          </section>}
+                          {results.length > 0 && <section aria-labelledby="song-results-title">
+                            <div className="mb-3 flex items-baseline justify-between gap-3"><h4 id="song-results-title" className="font-semibold">Songs</h4><span className="text-sm text-foreground/60">{results.length}</span></div>
+                            <div className="results-list divide-y divide-default">{results.slice(0, visibleResultCount).map((track) => <div className="result-row flex min-h-16 items-center gap-3 py-2" key={track.videoId}>{track.artwork && <img src={track.artwork} alt="" />}<div className="track-info grid min-w-0 flex-1 gap-1"><b>{track.title}</b><span>{track.artist} · {formatDuration(track.duration)}</span></div><Button variant="outline" size="sm" isDisabled={joinedRoomId !== room?.id || !handle.trim()} isPending={busy === track.videoId} onPress={() => void addTrack(track)}><Icon name="plus" size={15} /> Add</Button></div>)}</div>
+                          </section>}
+                        </div>
+                        {visibleResultCount < maxSearchResultCount && <div className="flex flex-col items-center gap-2 py-5"><div ref={searchResultsSentinelRef} aria-hidden="true" className="h-1 w-full" /><Button variant="ghost" size="sm" onPress={() => setVisibleResultCount((count) => Math.min(count + 10, maxSearchResultCount))}>Load more</Button></div>}
+                      </> : <p className="py-8 text-center text-foreground/60">{submittedQuery ? "No results found. Try another search." : "Search above to find music for this room."}</p>}
+                </Card>
+              </Tabs.Panel>
               <Tabs.Panel id="queue" className="dashboard-tab-panel min-w-0 pt-4"><Card role="region" aria-label="Queue" className="panel flex min-h-80 flex-col rounded-3xl p-5"><div className="panel-heading mb-4 flex items-center justify-between gap-3"><div><h3>Up next <span className="count-pill">{queueTracks.length}</span></h3></div><Button isIconOnly aria-label="Refresh queue" variant="ghost" onPress={() => void loadRoom()}><Icon name="refresh" /></Button></div>{queueTracks.length ? <div className="queue-list flex-1 divide-y divide-default">{queueTracks.map((track, index) => <div className="queue-row flex min-h-16 items-center gap-3 py-2" key={track.id ?? `${track.url}-${index}`}><span className="queue-index">{String(index + 1).padStart(2, "0")}</span><div className="queue-cover size-10 shrink-0 overflow-hidden rounded-3xl">{(track.artwork || track.url) && <img className="size-full object-cover" src={track.artwork ?? `https://img.youtube.com/vi/${track.url}/hqdefault.jpg`} alt="" />}</div><div className="track-info grid min-w-0 flex-1 gap-1"><b>{track.title.split(" - ")[0]}</b><span>{track.title.includes(" - ") ? track.title.split(" - ").slice(1).join(" - ").replace(/\s\[.*\]$/, "") : "YouTube Music"}</span></div><span className="queue-added">{track.addedBy ?? "Web player"}</span><Button isIconOnly aria-label={`Remove ${track.title}`} variant="ghost" className="remove-button" onPress={() => void removeTrack(track)}><Icon name="trash" size={16} /></Button></div>)}</div> : <div className="queue-empty flex min-h-56 flex-1 flex-col items-center justify-center gap-3 text-center"><b>Queue is empty</b><p>Search for a track and add it.</p><Button variant="secondary" size="sm" onPress={() => setActiveTab("discover")}><Icon name="search" size={15} /> Find a song</Button></div>}<div className="queue-footer mt-auto flex justify-between border-t border-default pt-3 text-sm"><span>Queue limit</span><b>{queueTracks.length} <i>/</i> {room?.queueLimit ?? 25}</b></div></Card></Tabs.Panel>
               <Tabs.Panel id="devices" className="dashboard-tab-panel min-w-0 pt-4"><Card role="region" aria-label="Connected players" className="panel min-w-0 rounded-3xl p-5"><div className="mb-5 flex items-center justify-between gap-4"><h3 className="text-lg font-semibold">Connected players</h3><span className="inline-flex shrink-0 items-center gap-2 rounded-3xl border border-default bg-default/40 px-3 py-1.5 text-sm"><span className={`size-2 rounded-3xl ${room?.connectedClients ? "bg-emerald-400" : "bg-default-400"}`} aria-hidden="true" />{room?.connectedClients ? "Online" : "Offline"}</span></div>{room?.devices.length ? <div className="grid divide-y divide-default">{room.devices.map((device, index) => <div className="flex items-center gap-3 py-4" key={`${device.fingerprint}-${index}`}><span className="grid size-10 shrink-0 place-items-center rounded-3xl bg-blue-500/10 text-blue-300"><Icon name="devices" /></span><span className="grid min-w-0 flex-1 gap-1"><b className="truncate text-sm font-medium">{device.name}</b><span className="text-sm text-foreground/60">Joined {new Date(device.createdAt).toLocaleDateString()}</span></span><span className="size-2 shrink-0 rounded-3xl bg-emerald-400" aria-label="Online" /></div>)}</div> : <div className="flex min-h-64 flex-col items-center justify-center gap-4 border-t border-default px-4 py-10 text-center"><span className="grid size-14 place-items-center rounded-3xl bg-blue-500/10 text-blue-300"><Icon name="devices" size={24} /></span><div className="grid max-w-sm gap-2"><b className="text-base font-semibold">No players connected yet</b><p className="text-sm leading-6 text-foreground/60">Open YouTube Music and join this room with the extension.</p></div></div>}</Card></Tabs.Panel>
               <Tabs.Panel id="settings" className="dashboard-tab-panel min-w-0 pt-4"><Card role="region" aria-label="Room settings" className="panel min-w-0 rounded-3xl p-5"><div className="panel-heading mb-4 flex items-center justify-between gap-3"><div><h3>Settings &amp; info</h3></div><span className="text-sm text-foreground/60">{room?.chatId ? "Telegram linked" : "Web room"}</span></div>
@@ -572,6 +753,40 @@ export default function App() {
                 <Button variant="secondary" isDisabled={unregistering} onPress={() => setUnregisterOpen(false)}>Cancel</Button>
                 <Button isPending={unregistering} onPress={() => void deleteRoom()}>Unregister room</Button>
               </div>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
+      <Modal>
+        <Modal.Backdrop className="modal-backdrop dark" variant="blur" isOpen={Boolean(searchDetail)} onOpenChange={(open) => { if (!open) setSearchDetail(null); }}>
+          <Modal.Container placement="center" size="lg">
+            <Modal.Dialog className="room-modal flex max-h-[85vh] w-full max-w-2xl flex-col items-start gap-4 overflow-y-auto rounded-3xl bg-background p-6 text-foreground" aria-label={searchDetail?.type === "artist" ? "Artist details" : "Album details"}>
+              <Modal.CloseTrigger className="modal-close" />
+              {loadingSearchDetail ? <p className="py-10 text-center text-foreground/60" role="status">Loading details…</p>
+                : searchDetailError ? <p className="py-10 text-center text-danger" role="alert">Could not load details: {searchDetailError}</p>
+                  : searchDetailData?.type === "ARTIST" ? <>
+                    <div className="flex w-full items-center gap-4 border-b border-default pb-5">
+                      <span className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-full bg-default/50">{searchDetailData.artwork && <img src={searchDetailData.artwork} alt="" className="size-full object-cover" />}</span>
+                      <div className="min-w-0"><p className="text-sm text-foreground/60">Artist</p><h2 id="search-detail-title" className="truncate text-2xl font-semibold">{searchDetailData.name}</h2></div>
+                    </div>
+                    <section className="w-full" aria-labelledby="artist-top-songs-title">
+                      <h3 id="artist-top-songs-title" className="mb-2 font-semibold">Top songs</h3>
+                      {searchDetailData.topSongs.length ? <div className="divide-y divide-default">{searchDetailData.topSongs.map((track) => <div className="flex min-h-16 items-center gap-3 py-2" key={track.videoId}><span className="size-11 shrink-0 overflow-hidden rounded-xl bg-default/50">{track.artwork && <img src={track.artwork} alt="" className="size-full object-cover" />}</span><div className="min-w-0 flex-1"><b className="block truncate text-sm">{track.title}</b><span className="text-sm text-foreground/60">{track.artist} · {formatDuration(track.duration)}</span></div><Button variant="outline" size="sm" isDisabled={joinedRoomId !== room?.id || !handle.trim()} isPending={busy === track.videoId} onPress={() => void addTrack(track)}><Icon name="plus" size={15} /> Add</Button></div>)}</div> : <p className="py-4 text-sm text-foreground/60">No songs are available for this artist.</p>}
+                    </section>
+                    <section className="w-full" aria-labelledby="artist-albums-title">
+                      <h3 id="artist-albums-title" className="mb-2 font-semibold">Albums</h3>
+                      {searchDetailData.topAlbums.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{searchDetailData.topAlbums.map((album) => <Button key={album.albumId} variant="ghost" className="flex h-auto min-w-0 items-center justify-start gap-3 rounded-3xl p-2 text-left hover:bg-default/50" aria-label={`View ${album.name} album details`} onPress={() => setSearchDetail({ type: "album", id: album.albumId })}><span className="size-14 shrink-0 overflow-hidden rounded-xl bg-default/50">{album.artwork && <img src={album.artwork} alt="" className="size-full object-cover" />}</span><span className="grid min-w-0 gap-1"><b className="truncate">{album.name}</b><span className="truncate text-sm text-foreground/60">{album.year ?? album.artist}</span></span></Button>)}</div> : <p className="py-4 text-sm text-foreground/60">No albums are available for this artist.</p>}
+                    </section>
+                  </> : searchDetailData?.type === "ALBUM" ? <>
+                    <div className="flex w-full items-center gap-4 border-b border-default pb-5">
+                      <span className="size-20 shrink-0 overflow-hidden rounded-xl bg-default/50">{searchDetailData.artwork && <img src={searchDetailData.artwork} alt="" className="size-full object-cover" />}</span>
+                      <div className="min-w-0"><p className="text-sm text-foreground/60">Album{searchDetailData.year ? ` · ${searchDetailData.year}` : ""}</p><h2 id="search-detail-title" className="truncate text-2xl font-semibold">{searchDetailData.name}</h2><p className="truncate text-sm text-foreground/60">{searchDetailData.artist}</p></div>
+                    </div>
+                    <section className="w-full" aria-labelledby="album-songs-title">
+                      <h3 id="album-songs-title" className="mb-2 font-semibold">Songs <span className="font-normal text-foreground/60">{searchDetailData.songs.length}</span></h3>
+                      {searchDetailData.songs.length ? <div className="divide-y divide-default">{searchDetailData.songs.map((track) => <div className="flex min-h-16 items-center gap-3 py-2" key={track.videoId}><span className="size-11 shrink-0 overflow-hidden rounded-xl bg-default/50">{track.artwork && <img src={track.artwork} alt="" className="size-full object-cover" />}</span><div className="min-w-0 flex-1"><b className="block truncate text-sm">{track.title}</b><span className="text-sm text-foreground/60">{track.artist} · {formatDuration(track.duration)}</span></div><Button variant="outline" size="sm" isDisabled={joinedRoomId !== room?.id || !handle.trim()} isPending={busy === track.videoId} onPress={() => void addTrack(track)}><Icon name="plus" size={15} /> Add</Button></div>)}</div> : <p className="py-4 text-sm text-foreground/60">No songs are available for this album.</p>}
+                    </section>
+                  </> : <p className="py-10 text-center text-foreground/60">Details are unavailable.</p>}
             </Modal.Dialog>
           </Modal.Container>
         </Modal.Backdrop>

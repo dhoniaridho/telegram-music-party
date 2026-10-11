@@ -30,7 +30,7 @@ const telegramUnavailable = {
         }),
         PlaybackModule,
         ...(ENV.TELEGRAM_BOT_TOKEN
-            ? [TelegrafModule.forRoot({ token: ENV.TELEGRAM_BOT_TOKEN })]
+            ? [TelegrafModule.forRoot({ token: ENV.TELEGRAM_BOT_TOKEN, launchOptions: false })]
             : []),
     ],
     controllers: [AppController],

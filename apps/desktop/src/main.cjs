@@ -90,6 +90,7 @@ async function persistSettings(nextServerUrl, nextTelegramBotToken, nextServerMo
 async function startLocalServer() {
   return new Promise((resolve, reject) => {
     let ready = false;
+    let telegramTokenCleared = false;
     let startupOutput = "";
     const child = spawn(process.execPath, [serverRunnerPath()], {
       cwd: serverPath(),
@@ -116,6 +117,14 @@ async function startLocalServer() {
       const output = data.toString();
       process.stdout.write(`[local server] ${output}`);
       startupOutput = (startupOutput + output).slice(-4096);
+      if (!telegramTokenCleared && startupOutput.includes("DESKTOP_TELEGRAM_TOKEN_CLEARED")) {
+        telegramTokenCleared = true;
+        telegramBotToken = "";
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        void persistSettings(serverUrl, telegramBotToken, serverMode).catch((error) => {
+          console.error("Could not clear the saved Telegram token:", error.message || error);
+        });
+      }
       if (!ready && startupOutput.includes("DESKTOP_SERVER_READY:3417")) {
         ready = true;
         clearStartupTimeout();
@@ -240,10 +249,8 @@ async function saveSettings(values) {
   const normalizedUrl = requestedMode === "tunnel"
     ? ""
     : requestedMode === "local" ? LOCAL_SERVER_URL : validServerUrl(enteredUrl);
-  const nextToken = telegramBotToken;
   const previousUrl = serverUrl;
   const previousMode = serverMode;
-  const previousToken = telegramBotToken;
   const hadLocalServer = previousMode === "tunnel" || previousMode === "local";
 
   try {
@@ -271,14 +278,13 @@ async function saveSettings(values) {
   } catch (error) {
     serverUrl = previousUrl;
     serverMode = previousMode;
-    telegramBotToken = previousToken;
     if (previousMode !== "tunnel") await stopQuickTunnel().catch(() => undefined);
     if (!hadLocalServer) await stopLocalServer();
     throw new Error(`Could not start the local server or tunnel. ${error.message || ""}`.trim());
   }
 
   serverMode = requestedMode;
-  await persistSettings(serverUrl, nextToken, serverMode);
+  await persistSettings(serverUrl, telegramBotToken, serverMode);
 
   if (dashboardView && !dashboardView.webContents.isDestroyed()) {
     if (serverUrl !== previousUrl) await dashboardView.webContents.loadURL(`${serverUrl}/`);

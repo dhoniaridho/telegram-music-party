@@ -313,11 +313,11 @@ function createButton({
 }: {
     onClick: any;
     children: string;
-    icon: "create" | "join" | "leave" | "info" | "settings" | "server" | "queue" | "members";
+    icon: "create" | "join" | "leave" | "info" | "settings" | "server" | "queue" | "members" | "refresh";
 }) {
     // const wrapBtn = document.createElement("ytmusic-guide-entry-renderer");
     const btn = document.createElement("tp-yt-paper-item");
-    btn.setAttribute("role", "link");
+    btn.setAttribute("role", "button");
     btn.classList.add("style-scope", "ytmusic-guide-entry-renderer");
     btn.setAttribute("style-target", "host");
     btn.setAttribute("tabindex", "0");
@@ -340,6 +340,7 @@ function createButton({
         server: "M4.5 6.75h15m-15 5.25h15m-15 5.25h15M7.5 6.75h.008v.008H7.5V6.75Zm0 5.25h.008v.008H7.5V12Zm0 5.25h.008v.008H7.5V17.25Z",
         queue: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
         members: "M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m16 0v-2a4 4 0 0 0-3-3.87M14 3.13a4 4 0 0 1 0 7.75M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
+        refresh: "M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5m-5 4a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5",
     } as const;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("stroke-linecap", "round");
@@ -366,6 +367,13 @@ function createButton({
     btn.appendChild(txt);
 
     btn.addEventListener("click", onClick);
+    btn.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            btn.click();
+        }
+    });
 
     return btn;
 
@@ -1019,6 +1027,19 @@ function createServerSettingsButton() {
     }, 2000);
 }
 
+function createRefreshButton() {
+    setTimeout(() => {
+        const button = createButton({
+            children: "Refresh",
+            icon: "refresh",
+            onClick: () => window.location.reload(),
+        });
+        document
+            .querySelector("[class='scroller scroller-on-hover style-scope ytmusic-guide-section-renderer']")
+            ?.append(button);
+    }, 2000);
+}
+
 function createJoinButton() {
     setTimeout(async () => {
         const btn = createButton({
@@ -1274,6 +1295,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const socket = io(config.partyUrl || DEFAULT_PARTY_URL);
     const ROOM_ID = config.roomId as string;
 
+    createRefreshButton();
     createServerSettingsButton();
     const isJoined = Boolean(config.roomId?.trim());
     if (isJoined) {
